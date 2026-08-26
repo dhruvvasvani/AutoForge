@@ -7,15 +7,15 @@
 
 ---
 
-## 📌 Problem Statement
+##  Problem Statement
 Security scanners generate a large volume of alerts upon GitHub pushes, leading to severe alert fatigue due to false positives and dead-code vulnerabilities. AutoForge addresses this by prioritizing actionable security issues and providing verified automated fixes.
 
-## 🎯 Product Vision
+##  Product Vision
 AutoForge scans GitHub repositories, eliminates dead-code noise using AST reachability, ranks vulnerabilities via ML model prioritization, generates secure AI fixes using Gemini, and automatically opens Pull Requests — end-to-end without manual triage.
 
 ---
 
-## 🏗️ Phase 1 Architecture
+##  Phase 1 Architecture
 
 ```
 GitHub Push ➔ Webhook Event ➔ Spring Boot Backend (Java 17) ➔ Redis Queue
@@ -37,7 +37,7 @@ React Dashboard (Live Logs, Heatmaps, PDF Reports)
 
 ---
 
-## 👥 Team Roles & Task Split
+##  Team Roles & Task Split
 
 | Role | Member | Primary Responsibilities |
 |---|---|---|
@@ -48,9 +48,9 @@ React Dashboard (Live Logs, Heatmaps, PDF Reports)
 
 ---
 
-## 📅 5-Week Master Plan (Demo 1 Target)
+##  5-Week Master Plan (Demo 1 Target)
 
-| Wk | Dhruv (Backend / Auth) | Birendra (GitHub / Scan) | Abhishek (AST / ML) | Kartik (AI Fix / Frontend) |
+| Wk |  (Backend / Auth) |  (GitHub / Scan) |  (AST / ML) |  (AI Fix / Frontend) |
 |:---:|---|---|---|---|
 | **1** | Spring Boot skeleton & project initialization | Study Semgrep/Checkov CLI & webhook architecture | Study tree-sitter & define reachability graph approach | Setup Gemini API access & React/Vite/Tailwind scaffold |
 | **2** | JPA Entity classes, DB schema & ER diagram | Webhook receiver endpoint & signature verification | Prototype AST parsing on sample code repositories | React folder structure, routing & layout UI |
@@ -60,7 +60,7 @@ React Dashboard (Live Logs, Heatmaps, PDF Reports)
 
 ---
 
-## 🛠️ Technology Stack
+##  Technology Stack
 
 * **Backend:** Java 17, Spring Boot 3.x, Spring Security, Spring Data JPA
 * **Database & Queue:** PostgreSQL, Redis
