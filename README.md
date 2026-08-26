@@ -41,10 +41,10 @@ React Dashboard (Live Logs, Heatmaps, PDF Reports)
 
 | Role | Member | Primary Responsibilities |
 |---|---|---|
-| **Backend & Auth Lead** | **Dhruv Vasvani** | Spring Boot core, PostgreSQL/JPA setup, Spring Security + JWT, User/Plan/Admin APIs |
-| **GitHub & Scan Pipeline Engineer** | **Birendra Nagar** | GitHub Webhook receiver, signature verification, Semgrep/Checkov execution, Redis job queue |
-| **AST / ML Engineer** | **Abhishek Vijayvargiya** | tree-sitter reachability engine, call graph analysis, ML prioritization model (scikit-learn) |
-| **AI Fix & Frontend Engineer** | **Kartik Sharma** | Gemini 2.5 Flash integration, automated PR engine, React + Vite dashboard, WebSockets |
+| **Backend & Auth Lead** | ** ** | Spring Boot core, PostgreSQL/JPA setup, Spring Security + JWT, User/Plan/Admin APIs |
+| **GitHub & Scan Pipeline Engineer** | ** ** | GitHub Webhook receiver, signature verification, Semgrep/Checkov execution, Redis job queue |
+| **AST / ML Engineer** | ** ** | tree-sitter reachability engine, call graph analysis, ML prioritization model (scikit-learn) |
+| **AI Fix & Frontend Engineer** | ** ** | Gemini 2.5 Flash integration, automated PR engine, React + Vite dashboard, WebSockets |
 
 ---
 
