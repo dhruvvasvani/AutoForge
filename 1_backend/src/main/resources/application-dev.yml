@@ -1,0 +1,8 @@
+# Local development overrides.
+# Activate with: SPRING_PROFILES_ACTIVE=dev
+spring:
+  jpa:
+    show-sql: true
+logging:
+  level:
+    com.autoforge: DEBUG
