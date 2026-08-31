@@ -1,5 +1,6 @@
 package com.autoforge.service;
 
+import org.springframework.transaction.annotation.Transactional;
 import com.autoforge.dto.AuthResponse;
 import com.autoforge.dto.LoginRequest;
 import com.autoforge.dto.RegisterRequest;
@@ -21,6 +22,7 @@ import org.springframework.stereotype.Service;
 
 @Service
 @RequiredArgsConstructor
+@Transactional
 public class AuthService {
 
     private final UserRepository userRepository;
