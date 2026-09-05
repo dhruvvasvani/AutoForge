@@ -1,9 +1,3 @@
-"""
-Week 5 - Cross-File Reachability Analysis & Depth Tracking
-Objective: extend single-file call graph to project-wide graph by resolving
-import / from-import statements, and add depth-limited BFS so vulnerable
-functions can be classified by how deep they sit from an entry point.
-"""
 import argparse
 import json
 import os
@@ -19,14 +13,12 @@ parser = Parser(PY_LANGUAGE)
 class CrossFileReachabilityAnalyzer:
     def __init__(self, entry_points=None, depth_limit=None):
         self.entry_points = entry_points or ["main", "handle_login", "get_user_profile"]
-        self.depth_limit = depth_limit  # None = unlimited
-        self.import_map = {}   # module_alias -> resolved module name, per file
-        self.call_graph = {}   # "file::func" -> ["file::func" or bare callee, ...]
-        self.dotted_to_key = {}  # "utils.db" -> "db" (module_key), built before graph pass
+        self.depth_limit = depth_limit
+        self.import_map = {}
+        self.call_graph = {}
+        self.dotted_to_key = {}
 
-    # ---------- import resolution ----------
     def _parse_imports(self, root_node, code):
-        """Return dict: local_name -> module (handles `import x` and `from x import y`)."""
         local_map = {}
         for node in root_node.children:
             if node.type == "import_statement":
@@ -57,7 +49,6 @@ class CrossFileReachabilityAnalyzer:
                             local_map[alias] = f"{module}.{name}"
         return local_map
 
-    # ---------- per-file call graph ----------
     def _build_file_graph(self, file_path):
         with open(file_path, "r", encoding="utf-8") as f:
             code = f.read()
@@ -69,16 +60,10 @@ class CrossFileReachabilityAnalyzer:
         current_func = f"{module_key}::global"
 
         def qualify(name):
-            """Resolve bare name to a defined 'module_key::func' when the source
-            module is known (either local file or a resolved import); otherwise
-            fall back to a dotted external reference (stdlib/3rd-party call)."""
             base = name.split(".")[0]
-            rest = name[len(base):]  # e.g. ".save_record" or ""
+            rest = name[len(base):]
             if base in imports:
                 dotted_module = imports[base]
-                # dotted_module may itself include the function, e.g. "utils.db.save_record"
-                # from `from utils.db import save_record`. Try longest-prefix match
-                # against known modules first.
                 candidate = dotted_module + rest
                 parts = candidate.split(".")
                 for cut in range(len(parts) - 1, 0, -1):
@@ -86,8 +71,8 @@ class CrossFileReachabilityAnalyzer:
                     func_part = ".".join(parts[cut:])
                     if mod_dotted in self.dotted_to_key and func_part:
                         return f"{self.dotted_to_key[mod_dotted]}::{func_part}"
-                return candidate  # unresolved external (e.g. 3rd-party lib)
-            return f"{module_key}::{name}"  # local call, same file
+                return candidate
+            return f"{module_key}::{name}"
 
         def traverse(node):
             nonlocal current_func
@@ -115,8 +100,6 @@ class CrossFileReachabilityAnalyzer:
         traverse(root)
 
     def build_project_graph(self, source_root):
-        """Walk source_root, index dotted module paths, then build a merged
-        call graph across all .py files (two passes: index, then resolve)."""
         self.call_graph = {}
         self.dotted_to_key = {}
         py_files = []
@@ -129,21 +112,13 @@ class CrossFileReachabilityAnalyzer:
                     dotted = os.path.splitext(rel)[0].replace(os.sep, ".")
                     module_key = os.path.splitext(fname)[0]
                     self.dotted_to_key[dotted] = module_key
-                    # also index the bare filename in case imports use a shorter path
                     self.dotted_to_key.setdefault(module_key, module_key)
 
         for full_path in py_files:
             self._build_file_graph(full_path)
         return self.call_graph
 
-    # ---------- depth-limited BFS ----------
     def find_reachable_with_depth(self):
-        """
-        BFS from entry points across the merged call graph.
-        Returns dict: func_key -> shortest depth from any entry point.
-        Entry points are matched by suffix (module::func endswith ::entry_name)
-        so callers don't need to know which file defines the entry point.
-        """
         depths = {}
         queue = deque()
 
@@ -175,7 +150,6 @@ class CrossFileReachabilityAnalyzer:
         tagged = []
         for finding in findings:
             func_name = finding.get("function") or finding.get("function_name")
-            # match by suffix since scan results usually don't know module prefix
             matched_key = next((k for k in depths if k.endswith(f"::{func_name}")), None)
             f = dict(finding)
             if matched_key is not None:
@@ -242,3 +216,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

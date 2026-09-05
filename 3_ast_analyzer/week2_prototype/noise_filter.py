@@ -1,8 +1,3 @@
-"""
-Week 2 - AST Parsing Prototype
-Objective: parse functional blocks, identify caller-callee relationships,
-map initial entry points.
-"""
 import tree_sitter_python as tspython
 from tree_sitter import Language, Parser
 
@@ -13,7 +8,6 @@ DEFAULT_ENTRY_POINTS = ["main", "handle_login", "get_user_prof_file"]
 
 
 def extract_functions(file_path: str):
-    """Return dict {func_name: [called_func_names]} for one file."""
     with open(file_path, "r", encoding="utf-8") as f:
         code = f.read()
     tree = parser.parse(bytes(code, "utf-8"))
@@ -47,3 +41,4 @@ if __name__ == "__main__":
     graph = extract_functions(target)
     for fn, callees in graph.items():
         print(f"{fn} -> {callees}")
+

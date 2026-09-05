@@ -1,0 +1,99 @@
+{
+  "scan_metadata": {
+    "timestamp": "2026-09-01T11:20:00Z",
+    "tools": ["semgrep", "checkov"],
+    "target_file": "test1.py"
+  },
+  "findings": [
+    {
+      "id": "VULN001",
+      "rule_id": "sql-injection-execute",
+      "file": "test1.py",
+      "line": 43,
+      "severity": "error",
+      "message": "SQL Injection: User input directly in SQL query",
+      "function": "authenticate_user",
+      "code": "query = f\"SELECT id, username FROM users WHERE username = '{username}' AND password = '{password}'\""
+    },
+    {
+      "id": "VULN002",
+      "rule_id": "shell-injection",
+      "file": "test1.py",
+      "line": 55,
+      "severity": "error",
+      "message": "Command Injection: Unsanitized subprocess call with shell=True",
+      "function": "export_user_tasks",
+      "code": "subprocess.call(cmd, shell=True)"
+    },
+    {
+      "id": "VULN003",
+      "rule_id": "insecure-pickle",
+      "file": "test1.py",
+      "line": 62,
+      "severity": "error",
+      "message": "Insecure Deserialization: pickle.loads() allows arbitrary code execution",
+      "function": "restore_session",
+      "code": "session = pickle.loads(session_data_bytes)"
+    },
+    {
+      "id": "VULN004",
+      "rule_id": "hardcoded-secret",
+      "file": "test1.py",
+      "line": 78,
+      "severity": "error",
+      "message": "Hardcoded Secret: Cryptographic key exposed in source code",
+      "function": "generate_token",
+      "code": "SECRET_KEY = \"SUPER_SECRET_KEY_12345\""
+    },
+    {
+      "id": "VULN005",
+      "rule_id": "weak-crypto-md5",
+      "file": "test1.py",
+      "line": 81,
+      "severity": "error",
+      "message": "Weak Cryptography: MD5 is cryptographically broken",
+      "function": "generate_token",
+      "code": "return hashlib.md5((username + SECRET_KEY).encode()).hexdigest()"
+    },
+    {
+      "id": "BUG001",
+      "rule_id": "off-by-one-error",
+      "file": "test1.py",
+      "line": 50,
+      "severity": "warning",
+      "message": "Off-by-one error: should be index < len() not <=",
+      "function": "get_task_by_index",
+      "code": "if index <= len(tasks_list)"
+    },
+    {
+      "id": "BUG002",
+      "rule_id": "resource-leak",
+      "file": "test1.py",
+      "line": 68,
+      "severity": "warning",
+      "message": "Resource leak: File not closed",
+      "function": "log_activity",
+      "code": "log_file = open(\"activity.log\", \"a\")"
+    },
+    {
+      "id": "BUG003",
+      "rule_id": "mutate-during-iteration",
+      "file": "test1.py",
+      "line": 74,
+      "severity": "warning",
+      "message": "List mutation during iteration causes skipped elements",
+      "function": "purge_inactive_users",
+      "code": "user_list.remove(user)"
+    },
+    {
+      "id": "UNREACHABLE_BUG",
+      "rule_id": "unused-helper-function",
+      "file": "test1.py",
+      "line": 90,
+      "severity": "error",
+      "message": "Dead code: This function is never called",
+      "function": "unused_security_check",
+      "code": "def unused_security_check():"
+    }
+  ]
+}

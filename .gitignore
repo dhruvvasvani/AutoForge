@@ -5,3 +5,27 @@ __pycache__/
 .ipynb_checkpoints/
 combined_scan_results.json
 filtered_scan_results.json
+
+
+# Hide backend config & DB credentials
+1_backend/src/main/resources/application.yml
+1_backend/src/main/resources/application-*.yml
+
+# Hide root Markdown files (except main README.md)
+/DEMO_GUIDE.md
+/FULL_TESTING_REPORT.md
+/HOW_TO_TEST_AST_PIPELINE.md
+/MASTER_PLAN_VERIFICATION.md
+/OUTPUT_DEFINITION.md
+/PIPELINE_OUTPUT_EXPLAINED.md
+/PROJECT_STATUS_REPORT.md
+/REAL_INTEGRATION_ROADMAP.md
+/TEACHER_DEMO_GUIDE.md
+/VULNERABILITIES_EXPLAINED.md
+/WORK_STATUS_SEQUENTIAL.md
+
+# Hide root demo & test scripts
+/DEMO_AST_PIPELINE_SIMPLE.ps1
+/DEMO_AST_PIPELINE_SIMPLE.py
+/TEST_AST_PIPELINE_INTEGRATION.ps1
+/TEST_AST_PIPELINE_INTEGRATION.py

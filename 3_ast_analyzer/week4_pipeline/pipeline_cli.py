@@ -1,9 +1,3 @@
-"""
-Week 4 - Automated Pipeline Filtering Integration (UPDATED for Week 5)
-Adds --depth-limit and --format flags per Gemini plan: routes to the
-cross-file engine (week5) when either flag is used, otherwise runs the
-original single-file week3 engine unchanged.
-"""
 import argparse
 import json
 import logging
@@ -12,8 +6,8 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "week3_reachability"))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "week5_cross_file"))
-from ast_engine import ASTReachabilityAnalyzer  # noqa: E402
-from cross_file_engine import CrossFileReachabilityAnalyzer, to_markdown  # noqa: E402
+from ast_engine import ASTReachabilityAnalyzer
+from cross_file_engine import CrossFileReachabilityAnalyzer, to_markdown
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("filter_pipeline")
@@ -70,13 +64,13 @@ def run_cross_file(source_root, scan_results_path, output_path, entry_points, de
 
 
 def main():
-    parser = argparse.ArgumentParser(description="AutoForge noise-filtering pipeline (Week 4 + Week 5)")
+    parser = argparse.ArgumentParser(description="AutoForge noise-filtering pipeline")
     parser.add_argument("--input", default="combined_scan_results.json")
     parser.add_argument("--output", default="filtered_scan_results.json")
-    parser.add_argument("--source", help="Single source .py file (week3 mode)")
-    parser.add_argument("--source-root", help="Project root dir - triggers cross-file mode (week5)")
+    parser.add_argument("--source")
+    parser.add_argument("--source-root")
     parser.add_argument("--entry-points", nargs="*", default=None)
-    parser.add_argument("--depth-limit", type=int, default=None, help="Max BFS depth (week5 cross-file mode)")
+    parser.add_argument("--depth-limit", type=int, default=None)
     parser.add_argument("--format", choices=["json", "markdown"], default="json")
     args = parser.parse_args()
 
@@ -85,14 +79,12 @@ def main():
         sys.exit(1)
 
     if args.source_root or args.depth_limit is not None or args.format == "markdown":
-        # Week 5 cross-file mode
         source_root = args.source_root or "."
         output = run_cross_file(
             source_root, args.input, args.output, args.entry_points, args.depth_limit, args.format
         )
         logger.info("Cross-file pipeline complete -> %s", args.output)
     else:
-        # Week 3/4 single-file mode (unchanged behavior)
         source = args.source or args.input
         output = run_single_file(source, args.input, args.output, args.entry_points)
         logger.info("Single-file pipeline complete -> %s", args.output)
@@ -102,3 +94,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

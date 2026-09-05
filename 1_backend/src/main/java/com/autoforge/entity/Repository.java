@@ -31,6 +31,6 @@ public class Repository {
     @Column(name = "webhook_id")
     private Long webhookId;
 
-    @Column(name = "created_at", nullable = false, updatable = false)
+    @Column(name = "created_at", nullable = true, updatable = false)
     private Instant createdAt = Instant.now();
 }

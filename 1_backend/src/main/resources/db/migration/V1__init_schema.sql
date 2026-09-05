@@ -1,5 +1,3 @@
--- AutoForge Phase 1 - initial schema (Week 2 deliverable)
-
 CREATE TABLE plans (
     id BIGSERIAL PRIMARY KEY,
     name VARCHAR(50) NOT NULL UNIQUE,
@@ -13,8 +11,8 @@ CREATE TABLE users (
     full_name VARCHAR(150) NOT NULL,
     email VARCHAR(150) NOT NULL UNIQUE,
     password_hash VARCHAR(255) NOT NULL,
-    role VARCHAR(20) NOT NULL DEFAULT 'USER',      -- USER | ADMIN | FACULTY
-    status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',  -- ACTIVE | PAUSED
+    role VARCHAR(20) NOT NULL DEFAULT 'USER',
+    status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
     plan_id BIGINT REFERENCES plans(id),
     created_at TIMESTAMP NOT NULL DEFAULT now(),
     updated_at TIMESTAMP NOT NULL DEFAULT now()
@@ -24,7 +22,7 @@ CREATE TABLE plan_requests (
     id BIGSERIAL PRIMARY KEY,
     user_id BIGINT NOT NULL REFERENCES users(id),
     requested_plan_id BIGINT NOT NULL REFERENCES plans(id),
-    status VARCHAR(20) NOT NULL DEFAULT 'PENDING', -- PENDING | APPROVED | REJECTED
+    status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
     created_at TIMESTAMP NOT NULL DEFAULT now(),
     resolved_at TIMESTAMP
 );
@@ -53,7 +51,7 @@ CREATE TABLE scans (
     repository_id BIGINT NOT NULL REFERENCES repositories(id),
     webhook_event_id BIGINT REFERENCES webhook_events(id),
     commit_sha VARCHAR(64),
-    status VARCHAR(20) NOT NULL DEFAULT 'QUEUED', -- QUEUED | RUNNING | COMPLETED | FAILED
+    status VARCHAR(20) NOT NULL DEFAULT 'QUEUED',
     started_at TIMESTAMP,
     completed_at TIMESTAMP,
     created_at TIMESTAMP NOT NULL DEFAULT now()
@@ -62,14 +60,14 @@ CREATE TABLE scans (
 CREATE TABLE vulnerabilities (
     id BIGSERIAL PRIMARY KEY,
     scan_id BIGINT NOT NULL REFERENCES scans(id),
-    source_scanner VARCHAR(30) NOT NULL,        -- SEMGREP | CHECKOV
+    source_scanner VARCHAR(30) NOT NULL,
     file_path VARCHAR(500),
     line_number INTEGER,
     rule_id VARCHAR(255),
-    severity VARCHAR(20),                       -- CRITICAL | HIGH | MEDIUM | LOW
+    severity VARCHAR(20),
     is_reachable BOOLEAN,
-    priority VARCHAR(20),                       -- set by ML prioritization
-    status VARCHAR(20) NOT NULL DEFAULT 'OPEN',  -- OPEN | FIXED | IGNORED | DEAD_CODE
+    priority VARCHAR(20),
+    status VARCHAR(20) NOT NULL DEFAULT 'OPEN',
     description TEXT,
     created_at TIMESTAMP NOT NULL DEFAULT now()
 );
@@ -89,7 +87,7 @@ CREATE TABLE pull_requests (
     github_pr_number INTEGER,
     github_pr_url VARCHAR(500),
     branch_name VARCHAR(255),
-    status VARCHAR(20) NOT NULL DEFAULT 'OPEN', -- OPEN | MERGED | CLOSED
+    status VARCHAR(20) NOT NULL DEFAULT 'OPEN',
     created_at TIMESTAMP NOT NULL DEFAULT now()
 );
 
@@ -111,3 +109,4 @@ CREATE TABLE audit_logs (
 INSERT INTO plans (name, max_repositories, max_scans_per_month) VALUES
     ('FREE', 1, 10),
     ('PAID', 20, 500);
+

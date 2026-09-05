@@ -1,8 +1,5 @@
 package com.autoforge.service;
 
-// Week 9 deliverable: closes the loop between GithubWebhookController and the
-// database - persists a WebhookEvent + a QUEUED Scan row so 2_pipeline's
-// worker (and later AST/ML stages) have something concrete to update.
 import com.autoforge.entity.Repository;
 import com.autoforge.entity.Scan;
 import com.autoforge.entity.ScanStatus;
@@ -49,12 +46,6 @@ public class ScanService {
         return scanRepository.save(scan);
     }
 
-    /**
-     * Week 9 integration seam: 2_pipeline's worker POSTs merged Semgrep +
-     * Checkov results here once scanning finishes. Persists each finding as
-     * a Vulnerability row, ready for the AST/ML pipeline (Weeks 12-13) to
-     * annotate reachability + priority.
-     */
     public Scan persistScanResults(Long scanId, JsonNode semgrepFindings, JsonNode checkovFindings) {
         Scan scan = scanRepository.findById(scanId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Scan not found: " + scanId));
@@ -83,3 +74,4 @@ public class ScanService {
         return v;
     }
 }
+

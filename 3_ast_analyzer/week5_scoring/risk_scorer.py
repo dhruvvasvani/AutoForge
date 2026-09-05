@@ -1,13 +1,3 @@
-"""
-Week 5 - Contextual Risk Prioritization & Scoring
-Objective: rule-based scoring (pre-ML placeholder). Priority matrix P0-P3.
-
-Matrix:
-  Reachable + error    -> P0 (Critical)
-  Reachable + warning  -> P1 (High)
-  Unreachable + error  -> P2 (Medium)
-  Unreachable + warning-> P3 (Low)
-"""
 import argparse
 import json
 
@@ -47,7 +37,7 @@ def score_findings(findings):
 
 def main():
     parser = argparse.ArgumentParser(description="Risk scoring for filtered SAST findings")
-    parser.add_argument("--input", required=True, help="filtered_scan_results.json from week4 pipeline")
+    parser.add_argument("--input", required=True)
     parser.add_argument("--out", default="scored_results.json")
     args = parser.parse_args()
 
@@ -68,3 +58,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

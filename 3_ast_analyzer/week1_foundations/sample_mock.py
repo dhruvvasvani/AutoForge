@@ -12,5 +12,4 @@ def handle_login(user_id):
 
 
 def dead_function():
-    # never called anywhere - noise example
     return "unreachable"
