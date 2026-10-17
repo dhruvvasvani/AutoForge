@@ -44,6 +44,8 @@ class ScanWorker:
                 port=self.redis_port,
                 decode_responses=True,
                 socket_connect_timeout=5,
+                socket_timeout=10,
+                health_check_interval=30,
                 protocol=2
             )
             self.redis_client.ping()
@@ -185,7 +187,10 @@ class ScanWorker:
             logger.debug(f"   Running: checkov {flag} {source_file} -o json")
 
             result = subprocess.run(
-                ["checkov", flag, source_file, "-o", "json"],
+                # sys.executable -m: Windows pe "checkov" exe PATH mein na mile to bhi chalta hai.
+                # --skip-download: Prisma Cloud (api0.prismacloud.io) timeout se bachata hai.
+                [sys.executable, "-m", "checkov.main", flag, source_file,
+                 "-o", "json", "--skip-download"],
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
@@ -332,15 +337,15 @@ print(json.dumps(result))
 
         while True:
             try:
-                job_data = self.redis_client.blpop(QUEUE_NAME, timeout=5)
+                # blpop (blocking) Docker-on-Windows pe "Timeout reading from socket"
+                # deta hai. Isliye chhota non-blocking poll: lpop + sleep.
+                job_json = self.redis_client.lpop(QUEUE_NAME)
 
-                if job_data:
-                    _, job_json = job_data
-                    logger.info(f"\n📥 Got job from queue")
+                if job_json:
+                    logger.info("\n📥 Got job from queue")
                     self.process_job(job_json)
-
                 else:
-                    pass
+                    time.sleep(1)
 
             except KeyboardInterrupt:
                 logger.info("\n🛑 Worker stopped")
