@@ -8,7 +8,7 @@ import redis
 import json
 import uuid
 
-r = redis.Redis(host="localhost", port=6379, db=0)
+r = redis.Redis(protocol=2, host="localhost", port=6379, db=0)
 
 QUEUE_NAME = "scan_jobs"
 

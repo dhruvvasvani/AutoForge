@@ -1,9 +1,3 @@
-"""
-scan_wrapper.py
-Repo pe Semgrep + Checkov chalata hai, output ko common format mein convert karta hai.
-Usage: python scan_wrapper.py <repo_path>
-"""
-
 import subprocess
 import json
 import sys
@@ -11,7 +5,6 @@ import os
 
 
 def run_semgrep(repo_path):
-    """Semgrep chalao, JSON output nikaalo"""
     output_file = os.path.join(repo_path, "_semgrep_temp.json")
     env = os.environ.copy()
     env["PYTHONUTF8"] = "1"
@@ -36,7 +29,6 @@ def run_semgrep(repo_path):
 
 
 def run_checkov(repo_path):
-    """Checkov chalao, JSON output nikaalo"""
     try:
         result = subprocess.run(
             ["checkov", "-d", repo_path, "-o", "json"],
@@ -53,7 +45,6 @@ def run_checkov(repo_path):
 
 
 def normalize_semgrep(results):
-    """Semgrep results ko common format mein convert karo"""
     normalized = []
     for r in results:
         normalized.append({
@@ -68,7 +59,6 @@ def normalize_semgrep(results):
 
 
 def normalize_checkov(results_list):
-    """Checkov results ko common format mein convert karo"""
     normalized = []
     for entry in results_list:
         failed_checks = entry.get("results", {}).get("failed_checks", [])
@@ -109,4 +99,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    main()

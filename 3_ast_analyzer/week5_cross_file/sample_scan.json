@@ -1,0 +1,5 @@
+{"findings":[
+ {"id":"F1","function":"get_user_profile","severity":"error"},
+ {"id":"F2","function":"unused_helper","severity":"warning"},
+ {"id":"F3","function":"save_record","severity":"error"}
+]}

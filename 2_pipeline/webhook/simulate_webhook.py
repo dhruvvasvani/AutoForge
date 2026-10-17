@@ -1,45 +1,57 @@
-"""
-simulate_webhook.py
-Fake GitHub push payload banata hai, sahi HMAC-SHA256 signature ke sath,
-taaki webhook controller ko local test kar sake bina real GitHub push ke.
-"""
-
 import hmac
 import hashlib
 import json
 import requests
 
-SECRET = "test_secret_123"  # application.properties me jo secret daala wahi yahan bhi daalo
-WEBHOOK_URL = "http://localhost:8080/api/webhooks/github"  # apna backend port check kar lena
+WEBHOOK_URL = "http://localhost:8089/api/webhooks/github"
+WEBHOOK_SECRET = "change-this-in-env-vars"
 
 payload = {
+    "ref": "refs/heads/main",
+    "before": "0000000000000000000000000000000000000000",
+    "after": "abc123commit",
     "repository": {
-        "full_name": "dhruvvasvani/AutoForge",
-        "clone_url": "https://github.com/dhruvvasvani/AutoForge.git"
+        "id": 123456,
+        "name": "AutoForge",
+        "full_name": "sample-owner/sample-repo",
+        "clone_url": "https://github.com/dhruvvasvani/AutoForge.git",
+        "html_url": "https://github.com/dhruvvasvani/AutoForge"
+    },
+    "pusher": {
+        "name": "dhruvvasvani",
+        "email": "dhruv@example.com"
     },
     "head_commit": {
         "id": "abc123commit",
-        "message": "test push for demo"
+        "message": "test push",
+        "timestamp": "2026-09-04T11:40:00Z",
+        "added": [],
+        "removed": [],
+        "modified": ["main.py"]
     },
-    "ref": "refs/heads/main"
+    "commits": [
+        {
+            "id": "abc123commit",
+            "message": "test push",
+            "timestamp": "2026-09-04T11:40:00Z",
+            "added": [],
+            "removed": [],
+            "modified": ["main.py"]
+        }
+    ]
 }
 
 payload_str = json.dumps(payload)
-
-# Sahi HMAC-SHA256 signature banao (jaisa GitHub banata hai)
-signature = hmac.new(
-    SECRET.encode(),
-    payload_str.encode(),
-    hashlib.sha256
-).hexdigest()
+payload_bytes = payload_str.encode('utf-8')
+signature = hmac.new(WEBHOOK_SECRET.encode('utf-8'), payload_bytes, hashlib.sha256).hexdigest()
 
 headers = {
     "Content-Type": "application/json",
+    "X-GitHub-Event": "push",
     "X-Hub-Signature-256": f"sha256={signature}"
 }
 
 print("Sending simulated webhook...")
-response = requests.post(WEBHOOK_URL, data=payload_str, headers=headers)
-
+response = requests.post(WEBHOOK_URL, data=payload_bytes, headers=headers)
 print(f"Status: {response.status_code}")
 print(f"Response: {response.text}")

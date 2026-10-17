@@ -5,7 +5,7 @@
 
 ---
 
-## Status: Demo 1 Complete ✅
+## Status: Demo 1 Complete
 
 Full pipeline tested end-to-end: webhook received → signature verified → payload parsed → scan job pushed to Redis queue.
 
@@ -47,16 +47,16 @@ Full pipeline tested end-to-end: webhook received → signature verified → pay
 ```
 2_pipeline/
 ├── webhook/
-│   ├── GithubWebhookController.java   # webhook endpoint + signature verification
-│   └── simulate_webhook.py            # test script to simulate GitHub push locally
+│ ├── GithubWebhookController.java # webhook endpoint + signature verification
+│ └── simulate_webhook.py # test script to simulate GitHub push locally
 ├── scanners/
-│   ├── scan_wrapper.py                # Semgrep + Checkov wrapper, normalized output
-│   ├── sample_semgrep_out.json        # sample Semgrep output (reference)
-│   └── sample_checkov_out.json        # sample Checkov output (reference)
+│ ├── scan_wrapper.py # Semgrep + Checkov wrapper, normalized output
+│ ├── sample_semgrep_out.json # sample Semgrep output (reference)
+│ └── sample_checkov_out.json # sample Checkov output (reference)
 ├── queue/
-│   ├── RedisQueueService.java         # Java Redis producer (Jedis)
-│   └── redis_producer.py              # Python test producer (reference)
-├── pipeline-test/                     # standalone Spring Boot project for isolated testing
+│ ├── RedisQueueService.java # Java Redis producer (Jedis)
+│ └── redis_producer.py # Python test producer (reference)
+├── pipeline-test/ # standalone Spring Boot project for isolated testing
 └── README.md
 ```
 
@@ -66,19 +66,19 @@ Full pipeline tested end-to-end: webhook received → signature verified → pay
 
 1. Start Redis: `docker start redis` (or `docker run -d --name redis -p 6379:6379 redis` if not created yet)
 2. Start the test backend:
-   ```
-   cd 2_pipeline/pipeline-test
-   .\mvnw spring-boot:run
-   ```
+ ```
+ cd 2_pipeline/pipeline-test
+ .\mvnw spring-boot:run
+ ```
 3. In a separate terminal, simulate a webhook push:
-   ```
-   python 2_pipeline/webhook/simulate_webhook.py
-   ```
+ ```
+ python 2_pipeline/webhook/simulate_webhook.py
+ ```
 4. Expected: `Status: 200`, response includes a `Scan ID`
 5. Verify job landed in Redis:
-   ```
-   docker exec -it redis redis-cli lrange scan_jobs 0 -1
-   ```
+ ```
+ docker exec -it redis redis-cli lrange scan_jobs 0 -1
+ ```
 
 ---
 
