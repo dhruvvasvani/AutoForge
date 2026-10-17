@@ -7,6 +7,9 @@ from pathlib import Path
 from datetime import datetime
 import redis
 import time
+import os
+import shutil
+import tempfile
 
 logging.basicConfig(
     level=logging.INFO,
@@ -18,6 +21,12 @@ AST_ANALYZER_PATH = Path(__file__).parent.parent.parent / "3_ast_analyzer"
 
 QUEUE_NAME = "scan_jobs"
 RESULTS_QUEUE = "scan_results"
+
+# Har scan ka repo yahin clone hota hai: <temp>/autoforge_workspaces/<scan_id>
+WORKSPACE_DIR = Path(tempfile.gettempdir()) / "autoforge_workspaces"
+
+# semgrep/checkov ko Windows pe UTF-8 force karna padta hai (cp1252 crash fix)
+UTF8_ENV = {**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"}
 
 
 class ScanWorker:
@@ -44,17 +53,51 @@ class ScanWorker:
             logger.error(f"✗ Failed to connect to Redis: {e}")
             return False
 
+    def prepare_repo(self, repo_url, commit_sha, scan_id):
+        """Repo clone karo aur exact commit pe checkout karo. Clone ka path return karta hai."""
+        workdir = WORKSPACE_DIR / str(scan_id)
+        if workdir.exists():
+            shutil.rmtree(workdir, ignore_errors=True)
+        WORKSPACE_DIR.mkdir(parents=True, exist_ok=True)
+
+        logger.info(f"   git clone {repo_url} -> {workdir}")
+        subprocess.run(
+            ["git", "clone", repo_url, str(workdir)],
+            check=True, capture_output=True, text=True, timeout=300
+        )
+        logger.info(f"   git checkout {commit_sha}")
+        subprocess.run(
+            ["git", "-C", str(workdir), "checkout", commit_sha],
+            check=True, capture_output=True, text=True, timeout=60
+        )
+        return workdir
+
     def process_job(self, job_data):
+        workdir = None
         try:
             logger.info(f"📥 Processing job: {job_data}")
 
             job = json.loads(job_data)
-            repo_id = job.get("repository_id")
-            commit_hash = job.get("commit_hash")
+            # Naye schema ke fields (repoFullName/commitSha/scan_id/repo_url) aur
+            # purane (repository_id/commit_hash/job_id) dono accept karta hai,
+            # jab tak Abhishek ke saath final schema likhit confirm nahi hota.
+            repo_id = job.get("repository_id") or job.get("repoFullName")
+            commit_hash = (job.get("commit_hash") or job.get("commitSha")
+                           or job.get("commit_sha"))
+            scan_id = job.get("scan_id") or job.get("job_id")
+            repo_url = job.get("repo_url")
             source_file = job.get("source_file")
 
             logger.info(f"   Repository: {repo_id}")
             logger.info(f"   Commit: {commit_hash}")
+
+            if repo_url and commit_hash:
+                logger.info("📦 STEP 0: Cloning repo + checkout commit...")
+                workdir = self.prepare_repo(repo_url, commit_hash, scan_id or int(time.time()))
+                source_file = str(workdir)
+
+            if not source_file:
+                raise ValueError("Job mein na repo_url+commit hai na source_file")
             logger.info(f"   Source: {source_file}")
 
             logger.info("🔍 STEP 1: Running Semgrep scanner...")
@@ -77,7 +120,7 @@ class ScanWorker:
 
             logger.info("✅ STEP 5: Preparing final results...")
             final_results = {
-                "job_id": job.get("job_id"),
+                "job_id": scan_id,
                 "repository_id": repo_id,
                 "commit_hash": commit_hash,
                 "timestamp": datetime.now().isoformat(),
@@ -105,17 +148,22 @@ class ScanWorker:
             self.push_result(error_result)
             return None
 
+        finally:
+            if workdir is not None:
+                shutil.rmtree(workdir, ignore_errors=True)
+
     def run_semgrep(self, source_file):
         try:
-            logger.debug(f"   Running: semgrep --json {source_file}")
+            logger.debug(f"   Running: semgrep --config auto --json {source_file}")
 
             result = subprocess.run(
-                ["semgrep", "--json", source_file],
+                ["semgrep", "--config", "auto", "--json", source_file],
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
                 errors="replace",
-                timeout=30
+                timeout=300,
+                env=UTF8_ENV
             )
 
             if result.returncode in (0, 1):
@@ -133,17 +181,30 @@ class ScanWorker:
 
     def run_checkov(self, source_file):
         try:
-            logger.debug(f"   Running: checkov -f {source_file} --quiet")
+            flag = "-d" if Path(source_file).is_dir() else "-f"
+            logger.debug(f"   Running: checkov {flag} {source_file} -o json")
 
             result = subprocess.run(
-                ["checkov", "-f", source_file, "--quiet"],
+                ["checkov", flag, source_file, "-o", "json"],
                 capture_output=True,
                 text=True,
-                timeout=30
+                encoding="utf-8",
+                errors="replace",
+                timeout=300,
+                env=UTF8_ENV
             )
 
             if result.returncode in (0, 1):
-                return json.loads(result.stdout) if result.stdout else {"results": []}
+                if not result.stdout:
+                    return {"results": []}
+                data = json.loads(result.stdout)
+                # Checkov dict ya list (per check_type) de sakta hai;
+                # failed_checks ko flat "results" list mein badlo (merge_results yahi padhta hai)
+                entries = data if isinstance(data, list) else [data]
+                failed = []
+                for entry in entries:
+                    failed.extend(entry.get("results", {}).get("failed_checks", []))
+                return {"results": failed}
             else:
                 logger.warning(f"Checkov error: {result.stderr}")
                 return {"results": []}
