@@ -1,0 +1,44 @@
+{
+    "results": [
+        {
+            "rule_id": "sql-injection-risk",
+            "file_path": "src/controllers/auth.py",
+            "line_number": 42,
+            "severity": "HIGH",
+            "extra": {
+                "message": "Potential SQL injection in user query",
+                "function_name": "handle_login"
+            }
+        },
+        {
+            "rule_id": "hardcoded-secret-key",
+            "file_path": "src/utils/test_helpers.py",
+            "line_number": 105,
+            "severity": "MEDIUM",
+            "extra": {
+                "message": "Found hardcoded API key in test script",
+                "function_name": "deprecated_mock_auth"
+            }
+        },
+        {
+            "rule_id": "xss-vulnerability",
+            "file_path": "src/controllers/user.py",
+            "line_number": 88,
+            "severity": "HIGH",
+            "extra": {
+                "message": "Unsanitized user input rendered in response",
+                "function_name": "get_user_profile"
+            }
+        },
+        {
+            "rule_id": "command-injection",
+            "file_path": "src/utils/old_calc.py",
+            "line_number": 15,
+            "severity": "HIGH",
+            "extra": {
+                "message": "Unchecked system call execution",
+                "function_name": "unused_calculator_stub"
+            }
+        }
+    ]
+}
