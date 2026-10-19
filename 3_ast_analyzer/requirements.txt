@@ -1,0 +1,4 @@
+tree-sitter>=0.21.0
+tree-sitter-python>=0.21.0
+tree-sitter-language-pack>=0.9.0
+torch>=2.0
