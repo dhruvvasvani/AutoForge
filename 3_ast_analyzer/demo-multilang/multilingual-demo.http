@@ -1,0 +1,51 @@
+@analyzer = http://127.0.0.1:8090
+
+### Python: AST, taint, and control-flow checks
+POST {{analyzer}}/api/v1/analyze
+Content-Type: application/json
+
+{
+  "file_path": "examples/hello.py",
+  "checks": ["syntax", "taint", "control_flow"],
+  "source": "def greet(name: str) -> str:\n    return f\"Hello, {name}!\"\n\n\nif __name__ == \"__main__\":\n    print(greet(\"AutoForge\"))\n"
+}
+
+### JavaScript: syntax parsing
+POST {{analyzer}}/api/v1/analyze
+Content-Type: application/json
+
+{
+  "file_path": "examples/hello.js",
+  "checks": ["syntax"],
+  "source": "function greet(name) {\n  return `Hello, ${name}!`;\n}\n\nconsole.log(greet('AutoForge'));\n"
+}
+
+### Java: syntax parsing
+POST {{analyzer}}/api/v1/analyze
+Content-Type: application/json
+
+{
+  "file_path": "examples/Hello.java",
+  "checks": ["syntax"],
+  "source": "public class Hello {\n    public static void main(String[] args) {\n        System.out.println(\"Hello, AutoForge!\");\n    }\n}\n"
+}
+
+### Go: syntax parsing
+POST {{analyzer}}/api/v1/analyze
+Content-Type: application/json
+
+{
+  "file_path": "examples/hello.go",
+  "checks": ["syntax"],
+  "source": "package main\n\nimport \"fmt\"\n\nfunc main() {\n    fmt.Println(\"Hello, AutoForge!\")\n}\n"
+}
+
+### SQL: syntax parsing
+POST {{analyzer}}/api/v1/analyze
+Content-Type: application/json
+
+{
+  "file_path": "examples/report.sql",
+  "checks": ["syntax"],
+  "source": "SELECT id, name\nFROM projects\nWHERE status = 'active'\nORDER BY name;\n"
+}

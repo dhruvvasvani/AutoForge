@@ -1,0 +1,68 @@
+services:
+  webhook:
+    build:
+      context: ../..
+      dockerfile: src/deployment/Dockerfile
+    image: autoforge-ast-analyzer:week10
+    init: true
+    mem_limit: 2g
+    read_only: true
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    environment:
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET:?Set WEBHOOK_SECRET before deployment}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:?Set GITHUB_TOKEN before deployment}
+      GITHUB_REPOSITORY: ${GITHUB_REPOSITORY:?Set GITHUB_REPOSITORY before deployment}
+      JOB_DB_PATH: /data/jobs.sqlite3
+      FEEDBACK_PATH: /data/false_positive_feedback.jsonl
+      LOG_LEVEL: INFO
+    volumes:
+      - analyzer-data:/data
+    ports:
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3)"
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+  worker:
+    image: autoforge-ast-analyzer:week10
+    init: true
+    mem_limit: 2g
+    command: ["python", "-m", "src.deployment.worker"]
+    read_only: true
+    restart: unless-stopped
+    depends_on:
+      webhook:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    environment:
+      GITHUB_TOKEN: ${GITHUB_TOKEN:?Set GITHUB_TOKEN before deployment}
+      GITHUB_REPOSITORY: ${GITHUB_REPOSITORY:?Set GITHUB_REPOSITORY before deployment}
+      JOB_DB_PATH: /data/jobs.sqlite3
+      FEEDBACK_PATH: /data/false_positive_feedback.jsonl
+      METRICS_PORT: "8001"
+      LOG_LEVEL: INFO
+    volumes:
+      - analyzer-data:/data
+    ports:
+      - "127.0.0.1:8001:8001"
+
+volumes:
+  analyzer-data:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable
@@ -36,6 +37,11 @@ class FunctionSymbol:
 
 
 class SymbolTable:
+    _EXCLUDED_DIRECTORIES = {
+        ".git", ".venv", "venv", "__pycache__", ".pytest_cache",
+        "node_modules", "vendor", "build", "dist", "target",
+    }
+
     def __init__(self) -> None:
         self.modules: dict[str, Path] = {}
         self.functions: dict[str, FunctionSymbol] = {}
@@ -49,17 +55,24 @@ class SymbolTable:
         if not root.is_dir():
             raise NotADirectoryError(root)
         table = cls()
-        for path in sorted(root.rglob("*.py")):
-            if any(part in {".git", ".venv", "venv", "__pycache__"} for part in path.parts):
-                continue
-            relative = path.relative_to(root)
-            module = ".".join(relative.with_suffix("").parts)
-            if module.endswith(".__init__"):
-                module = module[: -len(".__init__")]
-            table.modules[module] = path
-            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-            table._collect_scopes(tree, module, path)
-            table._collect_functions(tree, module, path)
+        for directory, child_directories, filenames in os.walk(root):
+            child_directories[:] = sorted(
+                name for name in child_directories
+                if name.lower() not in cls._EXCLUDED_DIRECTORIES
+            )
+            current_directory = Path(directory)
+            for filename in sorted(filenames):
+                path = current_directory / filename
+                if path.suffix.lower() != ".py":
+                    continue
+                relative = path.relative_to(root)
+                module = ".".join(relative.with_suffix("").parts)
+                if module.endswith(".__init__"):
+                    module = module[: -len(".__init__")]
+                table.modules[module] = path
+                tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+                table._collect_scopes(tree, module, path)
+                table._collect_functions(tree, module, path)
         return table
 
     def _collect_scopes(self, tree: ast.Module, module: str, path: Path) -> None:

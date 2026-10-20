@@ -145,7 +145,9 @@ class CrossFileReachabilityAnalyzer:
 
         with open(scan_results_path, "r", encoding="utf-8") as f:
             raw = json.load(f)
-        findings = raw.get("findings", raw if isinstance(raw, list) else [])
+        findings = raw.get("findings", []) if isinstance(raw, dict) else (
+            raw if isinstance(raw, list) else []
+        )
 
         tagged = []
         for finding in findings:
@@ -216,4 +218,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

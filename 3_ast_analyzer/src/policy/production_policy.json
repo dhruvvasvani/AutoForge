@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "severity_thresholds": {
+    "CRITICAL": {
+      "max_allowed": 0
+    },
+    "HIGH": {
+      "max_allowed": 1
+    },
+    "MEDIUM": {
+      "max_allowed": null
+    },
+    "LOW": {
+      "max_allowed": null
+    }
+  },
+  "risk_score_block_threshold": 8.5,
+  "min_ml_confidence": 0.6,
+  "approved_suppression_max_days": 90,
+  "approved_by": []
+}

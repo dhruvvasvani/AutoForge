@@ -1,0 +1,46 @@
+{
+  "analyzer": "AutoForge Local AST Analyzer",
+  "endpoint": "http://127.0.0.1:8090/api/v1/analyze",
+  "samples_tested": 5,
+  "languages": [
+    {
+      "language": "python",
+      "file_path": "examples/hello.py",
+      "checks_run": ["syntax", "taint", "control_flow"],
+      "findings": 0,
+      "syntax_errors": 0
+    },
+    {
+      "language": "javascript",
+      "file_path": "examples/hello.js",
+      "checks_run": ["syntax"],
+      "findings": 0,
+      "syntax_errors": 0
+    },
+    {
+      "language": "java",
+      "file_path": "examples/Hello.java",
+      "checks_run": ["syntax"],
+      "findings": 0,
+      "syntax_errors": 0
+    },
+    {
+      "language": "go",
+      "file_path": "examples/hello.go",
+      "checks_run": ["syntax"],
+      "findings": 0,
+      "syntax_errors": 0
+    },
+    {
+      "language": "sql",
+      "file_path": "examples/report.sql",
+      "checks_run": ["syntax"],
+      "findings": 0,
+      "syntax_errors": 0
+    }
+  ],
+  "semgrep_and_checkov": {
+    "scan_completed": true,
+    "findings": 0
+  }
+}

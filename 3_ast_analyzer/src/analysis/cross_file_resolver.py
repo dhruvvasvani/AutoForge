@@ -19,10 +19,20 @@ class CallEdge:
     line: int
     assigned_to: str | None = None
     call_name: str = ""
+    keyword_arguments: tuple[tuple[str, str], ...] = ()
 
     @property
     def argument_bindings(self) -> dict[str, str]:
-        return dict(zip(self.parameters, self.arguments))
+        parameters = self.parameters
+        if (
+            "." in self.call_name
+            and parameters
+            and parameters[0] in {"self", "cls"}
+        ):
+            parameters = parameters[1:]
+        bindings = dict(zip(parameters, self.arguments))
+        bindings.update(self.keyword_arguments)
+        return bindings
 
 
 class CrossFileResolver:
@@ -114,6 +124,11 @@ class CrossFileResolver:
                 symbol = self._find_symbol(callee)
                 if symbol is not None:
                     args = tuple(CrossFileResolver._expr_name(arg) for arg in node.args)
+                    keywords = tuple(
+                        (keyword.arg, CrossFileResolver._expr_name(keyword.value))
+                        for keyword in node.keywords
+                        if keyword.arg is not None
+                    )
                     parent = parent_map.get(node)
                     assigned_to = None
                     if isinstance(parent, ast.Assign) and parent.value is node and parent.targets:
@@ -122,7 +137,7 @@ class CrossFileResolver:
                         assigned_to = CrossFileResolver._expr_name(parent.target)
                     self.call_edges.append(CallEdge(
                         scopes[-1], symbol.qualified_name, args, symbol.parameters,
-                        node.lineno, assigned_to, name,
+                        node.lineno, assigned_to, name, keywords,
                     ))
                 inner_self.generic_visit(node)
 

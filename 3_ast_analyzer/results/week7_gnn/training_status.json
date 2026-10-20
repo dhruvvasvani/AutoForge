@@ -1,0 +1,39 @@
+{
+  "status": "incomplete",
+  "checkpoint": "3_ast_analyzer/src/ml/cpg_gnn_model.pt",
+  "checkpoint_exists": false,
+  "training_metrics_available": false,
+  "dataset": {
+    "name": "S-AIR-L/PyCode-Vul",
+    "source": "local CSV files",
+    "prepared_train_csv": "3_ast_analyzer/data/pycode_vul/prepared/train.csv",
+    "heldout_test_csv": "3_ast_analyzer/data/pycode_vul/test.csv",
+    "prepared_train_rows": 12764,
+    "heldout_exact_code_overlap_after_preparation": 0
+  },
+  "encoder": {
+    "name": "microsoft/codebert-base",
+    "local_path": "3_ast_analyzer/models/codebert-base",
+    "weights_downloaded": true
+  },
+  "training_configuration": {
+    "max_epochs": 50,
+    "early_stopping_patience": 7,
+    "device": "cpu",
+    "graphs_to_encode": 26007,
+    "graphs_encoded_before_stop": 32,
+    "epochs_completed": 0,
+    "test_loss": null,
+    "test_accuracy": null
+  },
+  "environment_constraints": {
+    "pytorch_version": "2.13.0+cpu",
+    "cuda_available_in_pytorch": false,
+    "nvidia_gpu_detected": "NVIDIA GeForce RTX 2050, 4 GB",
+    "free_physical_ram_gb_at_preflight": 0.66,
+    "pagefile_size_gb": 24,
+    "cuda_wheel_install": "Cancelled after repeated download interruptions and DNS failures; CPU-only PyTorch remains installed."
+  },
+  "training_log": "3_ast_analyzer/results/week7_gnn/training.log",
+  "reason": "The CPU-only feature-encoding run advanced through 32 of 26007 graphs and had not completed an epoch. Full training was stopped rather than leave a multi-day run or report misleading metrics."
+}

@@ -1,0 +1,18 @@
+{
+  "source_train_csv": "3_ast_analyzer\\data\\pycode_vul\\train.csv",
+  "source_test_csv": "3_ast_analyzer\\data\\pycode_vul\\test.csv",
+  "prepared_train_csv": "3_ast_analyzer\\data\\pycode_vul\\prepared\\train.csv",
+  "original_train_rows": 14248,
+  "filtered_train_rows_overlapping_heldout_test_code": 502,
+  "filtered_duplicate_train_rows": 982,
+  "prepared_train_rows": 12764,
+  "prepared_train_row_labels": {
+    "1": 5381,
+    "0": 7383
+  },
+  "raw_train_unique_code_hashes": 24221,
+  "heldout_test_unique_code_hashes": 6274,
+  "exact_code_hash_intersection_before_filtering": 519,
+  "prepared_train_test_code_hash_intersection": 0,
+  "deduplication": "Preserved rows only when neither vulnerable nor patched source overlaps exact source hashes in the official held-out test or earlier retained training rows."
+}

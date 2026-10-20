@@ -9,6 +9,17 @@ const apiClient = axios.create({
   },
 });
 
+const analyzerClient = axios.create({
+  baseURL: import.meta.env.VITE_ANALYZER_URL || 'http://127.0.0.1:8090',
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+const webhookClient = axios.create({
+  baseURL: import.meta.env.VITE_WEBHOOK_URL || 'http://127.0.0.1:8091',
+});
+
 apiClient.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('authToken');
@@ -153,6 +164,14 @@ export const dashboardAPI = {
     apiClient.get('/dashboard/metrics'),
 };
 
+export const analyzerAPI = {
+  analyzeProject: (files) =>
+    analyzerClient.post('/api/v1/analyze-project', { files }),
+
+  webhookHealth: () =>
+    webhookClient.get('/healthz'),
+};
+
 export const adminAPI = {
   getUsers: () =>
     apiClient.get('/admin/users'),
@@ -171,4 +190,3 @@ export const adminAPI = {
 };
 
 export default apiClient;
-

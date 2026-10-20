@@ -46,6 +46,16 @@ class ReachabilityAnalyzer:
         tagged = []
         for finding in findings:
             tagged_finding = dict(finding)
+            file_path = (
+                tagged_finding.get("file")
+                or tagged_finding.get("path")
+                or tagged_finding.get("file_path")
+            )
+            if isinstance(file_path, str) and Path(file_path).suffix.lower() != ".py":
+                tagged_finding["function"] = None
+                tagged_finding["reachability"] = "UNKNOWN"
+                tagged.append(tagged_finding)
+                continue
             function = (
                 tagged_finding.get("function")
                 or tagged_finding.get("function_name")

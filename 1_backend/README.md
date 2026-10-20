@@ -11,9 +11,17 @@
 
 ## Run
 
+For local development without PostgreSQL, start the demo profile. It uses an
+in-memory H2 database, so user and repository records are discarded when the
+backend stops:
+
 ```bash
-mvn spring-boot:run
+.\mvnw.cmd spring-boot:run "-Dspring-boot.run.profiles=demo"
 ```
+
+The backend listens on `http://localhost:8089`. This profile supports local
+registration, login, and repository APIs. GitHub-triggered scan jobs additionally
+need Redis and a running pipeline worker.
 
 ## Key endpoints added in Weeks 6-9
 
