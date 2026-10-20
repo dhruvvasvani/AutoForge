@@ -55,7 +55,9 @@ REDIS_PORT = int(_env("REDIS_PORT", "6379"))
 
 AST_SERVICE_URL = _env("AST_SERVICE_URL", "http://localhost:8001").rstrip("/")  # "" = disabled
 BACKEND_URL = _env("BACKEND_URL", "http://localhost:8080").rstrip("/")
-INTERNAL_SECRET = _env("INTERNAL_SECRET", "")  # sent as X-Internal-Secret (backend gate comes later)
+# Backend InternalApiTokenFilter: header X-AutoForge-Internal-Token, must equal backend `autoforge.internal-token`.
+# Same env name as 2_pipeline/client.py (AUTOFORGE_INTERNAL_SCAN_TOKEN); AUTOFORGE_INTERNAL_SECRET kept as alias.
+INTERNAL_TOKEN = os.environ.get("AUTOFORGE_INTERNAL_SCAN_TOKEN") or _env("INTERNAL_SECRET", "")
 AI_FIX_URL = _env("AI_FIX_URL", "http://localhost:5050").rstrip("/")
 AI_FIX_ENABLED = _env("AI_FIX_ENABLED", "true").lower() == "true"
 MAX_FIXES_PER_SCAN = int(_env("MAX_FIXES", "3"))
@@ -342,6 +344,7 @@ class ScanWorker:
                 ["semgrep", "--config", "auto", "--json", path],
                 capture_output=True, text=True, encoding="utf-8", errors="replace",
                 timeout=SCAN_TIMEOUT, env=UTF8_ENV,
+                cwd=path if Path(path).is_dir() else None,
             )
             if result.returncode in (0, 1) and result.stdout:
                 return json.loads(result.stdout)
@@ -363,6 +366,9 @@ class ScanWorker:
                 [sys.executable, "-m", "checkov.main", flag, path, "-o", "json", "--skip-download"],
                 capture_output=True, text=True, encoding="utf-8", errors="replace",
                 timeout=SCAN_TIMEOUT, env=UTF8_ENV,
+                # same drive as the clone: checkov calls os.path.relpath(), which crashes on Windows
+                # when the clone (temp dir on C:) and the working dir (D:) are on different drives
+                cwd=path if Path(path).is_dir() else None,
             )
             if result.returncode in (0, 1) and result.stdout:
                 data = json.loads(result.stdout)
@@ -543,26 +549,36 @@ class ScanWorker:
             return False
 
         def item(f):
+            extra = {"severity": f.get("severity"), "message": f.get("message"),
+                     "priority": f.get("priority"), "reachability": f.get("reachability")}
+            # backend ScanService.toVulnerability reads extra.reachable (boolean) + extra.combined_risk_score
+            if f.get("reachability") in ("REACHABLE_CODE", "UNREACHABLE_NOISE"):
+                extra["reachable"] = f["reachability"] == "REACHABLE_CODE"
+            if isinstance(f.get("combined_risk_score"), (int, float)):
+                extra["combined_risk_score"] = f["combined_risk_score"]
             return {
                 "check_id": f.get("rule_id"),
                 "path": f.get("file"),
                 "start": {"line": f.get("line") or 0},
-                "extra": {"severity": f.get("severity"), "message": f.get("message")},
+                "extra": extra,
                 "source": f.get("source"),
-                "reachability": f.get("reachability"),
-                "priority": f.get("priority"),
                 "ai_fix": f.get("ai_fix"),
             }
 
         actionable = ast["actionable_findings"]
+        scores = [f["combined_risk_score"] for f in actionable
+                  if isinstance(f.get("combined_risk_score"), (int, float))]
         payload = {
             "repoFullName": job["repo"],
             "commitSha": job["commit"],
             "semgrep": [item(f) for f in actionable if f.get("source") == "semgrep"],
             "checkov": [item(f) for f in actionable if f.get("source") == "checkov"],
             "tagged_findings": [item(f) for f in actionable + ast["filtered_noise"]],
+            "combinedRiskScore": max(scores) if scores else None,
         }
-        headers = {"X-Internal-Secret": INTERNAL_SECRET} if INTERNAL_SECRET else {}
+        if not INTERNAL_TOKEN:
+            logger.warning("AUTOFORGE_INTERNAL_SCAN_TOKEN not set - backend will answer 401")
+        headers = {"X-AutoForge-Internal-Token": INTERNAL_TOKEN} if INTERNAL_TOKEN else {}
         try:
             r = requests.post(f"{BACKEND_URL}/api/internal/scans/{scan_id}/results",
                               json=payload, headers=headers, timeout=60)
