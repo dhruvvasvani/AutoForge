@@ -8,6 +8,7 @@ import logging
 import os
 import signal
 from collections.abc import Mapping
+from pathlib import Path
 from urllib.parse import quote
 from typing import Any
 
@@ -16,6 +17,7 @@ import httpx
 from src.analysis.taint_engine import TaintEngine
 from src.integration.diff_parser import filter_findings_to_changed_lines, parse_unified_diff
 from src.integration.github_bot import GitHubBot
+from src.integration.static_scanner import scan_sources
 from src.integration.webhook_server import PullRequestEvent
 from src.monitoring.logger import get_security_logger, log_security_event
 from src.monitoring.metrics_collector import MetricsCollector
@@ -29,6 +31,7 @@ _LOGGER = logging.getLogger(__name__)
 _GITHUB_API = "https://api.github.com"
 _MAX_PR_FILES = 500
 _MAX_PARALLEL_CONTENT_REQUESTS = 8
+_MAX_PR_SOURCE_BYTES = 1_000_000
 
 
 class PullRequestWorker:
@@ -56,6 +59,16 @@ class PullRequestWorker:
                 "/data/false_positive_feedback.jsonl",
             )
         )
+        self.static_scanners_required = (
+            os.getenv("STATIC_SCANNERS_REQUIRED", "true").strip().lower() == "true"
+        )
+        self.ai_fix_url = os.getenv("AI_FIX_URL", "").rstrip("/")
+        self.ai_fix_enabled = os.getenv("AI_FIX_ENABLED", "false").strip().lower() == "true"
+        self.max_ai_fixes = int(os.getenv("MAX_AI_FIXES", "3"))
+        if self.max_ai_fixes < 0:
+            raise ValueError("MAX_AI_FIXES must not be negative")
+        if self.ai_fix_enabled and not self.ai_fix_url:
+            raise ValueError("AI_FIX_URL must be configured when AI_FIX_ENABLED is true")
 
     async def run_once(self) -> bool:
         job = await asyncio.to_thread(self.queue.claim)
@@ -94,7 +107,7 @@ class PullRequestWorker:
                 changed_lines = parse_unified_diff(diff_text)
                 files = await self._fetch_pull_request_files(client, event)
                 with self.metrics.track_scan():
-                    findings, unsupported_files = await self._analyze_changed_python_files(
+                    findings, unsupported_files, scanner_status = await self._analyze_changed_python_files(
                         client,
                         event,
                         changed_lines,
@@ -102,9 +115,50 @@ class PullRequestWorker:
                     )
                 changed_findings = filter_findings_to_changed_lines(findings, changed_lines)
                 scored_findings = VulnerabilityScorer.score_findings(changed_findings)
+                scanner_risk_floor = {
+                    "CRITICAL": 9.0,
+                    "ERROR": 9.0,
+                    "HIGH": 7.0,
+                    "WARNING": 7.0,
+                    "MEDIUM": 5.0,
+                    "LOW": 2.0,
+                    "INFO": 2.0,
+                }
+                scanner_severity = {
+                    "ERROR": "CRITICAL",
+                    "WARNING": "HIGH",
+                    "INFO": "LOW",
+                }
+                for finding in scored_findings:
+                    raw_severity = finding.get("scanner_severity")
+                    if isinstance(raw_severity, str):
+                        severity = raw_severity.upper()
+                        normalized_severity = scanner_severity.get(severity, severity)
+                        if normalized_severity in scanner_risk_floor:
+                            finding["severity"] = normalized_severity
+                            finding["combined_risk_score"] = max(
+                                finding["combined_risk_score"],
+                                scanner_risk_floor[severity],
+                            )
                 gate = self.rule_tuner.evaluate(scored_findings)
                 self.metrics.record_findings(scored_findings)
                 self.metrics.update_memory_usage()
+
+                failed_scanners = {
+                    scanner: status
+                    for scanner, status in scanner_status.items()
+                    if status in {"failed", "unavailable"}
+                }
+                if self.static_scanners_required and failed_scanners:
+                    gate["passed"] = False
+                    gate["status"] = "FAILED"
+                    gate["blockers"].append(
+                        {"rule": "static_scanners", "scanners": failed_scanners}
+                    )
+                    gate["summary"] += (
+                        "; FAILED: required static scanner(s) did not complete "
+                        f"({', '.join(sorted(failed_scanners))})"
+                    )
 
                 if unsupported_files:
                     gate["passed"] = False
@@ -119,6 +173,12 @@ class PullRequestWorker:
                     gate["summary"] += (
                         f"; FAILED: {len(unsupported_files)} changed non-Python file(s) "
                         "were not taint-analyzed"
+                    )
+
+                if self.ai_fix_enabled and self.ai_fix_url:
+                    await self._attach_ai_suggestions(
+                        scored_findings,
+                        findings,
                     )
 
                 await bot.post_review(
@@ -145,6 +205,7 @@ class PullRequestWorker:
                     changed_files=len(changed_lines),
                     scanned_python_files=len(files),
                     findings=len(scored_findings),
+                    static_scanners=scanner_status,
                     suppressed_false_positives=gate["suppressed_false_positives"],
                     unsupported_language_files=len(unsupported_files),
                 )
@@ -181,7 +242,7 @@ class PullRequestWorker:
         event: PullRequestEvent,
         changed_lines: Mapping[str, list[int]],
         files: list[Mapping[str, Any]],
-    ) -> tuple[list[dict[str, Any]], list[str]]:
+    ) -> tuple[list[dict[str, Any]], list[str], dict[str, str]]:
         changed_files = {
             str(item.get("filename"))
             for item in files
@@ -191,10 +252,20 @@ class PullRequestWorker:
             and changed_lines[str(item.get("filename"))]
         }
         python_files = sorted(path for path in changed_files if path.lower().endswith(".py"))
+        supported_extensions = {
+            ".py", ".java", ".js", ".jsx", ".ts", ".tsx", ".go", ".rb", ".php",
+            ".cs", ".c", ".cpp", ".tf", ".yaml", ".yml", ".json",
+        }
+        scan_files = sorted(
+            path
+            for path in changed_files
+            if Path(path).suffix.lower() in supported_extensions
+            or Path(path).name.lower() == "dockerfile"
+        )
         unsupported_files = sorted(changed_files - set(python_files))
         semaphore = asyncio.Semaphore(_MAX_PARALLEL_CONTENT_REQUESTS)
 
-        async def fetch_source(path: str) -> tuple[str, str]:
+        async def fetch_source(path: str) -> tuple[str, str] | None:
             async with semaphore:
                 encoded_path = quote(path, safe="/")
                 response = await client.get(
@@ -209,17 +280,38 @@ class PullRequestWorker:
                 or document.get("encoding") != "base64"
                 or not isinstance(document.get("content"), str)
             ):
-                raise ValueError(f"GitHub did not return base64 file content for {path}")
+                _LOGGER.warning("GitHub did not return base64 file content for %s", path)
+                return None
             try:
-                content = base64.b64decode(document["content"], validate=True).decode("utf-8")
+                encoded_content = document["content"]
+                if len(encoded_content) > ((_MAX_PR_SOURCE_BYTES + 2) // 3) * 4:
+                    _LOGGER.warning("Skipping oversized changed file %s", path)
+                    return None
+                content_bytes = base64.b64decode(encoded_content, validate=True)
+                if len(content_bytes) > _MAX_PR_SOURCE_BYTES:
+                    _LOGGER.warning("Skipping oversized changed file %s", path)
+                    return None
+                content = content_bytes.decode("utf-8")
             except (ValueError, UnicodeDecodeError) as error:
                 raise ValueError(f"could not decode source file {path}") from error
             return path, content
 
-        sources = await asyncio.gather(*(fetch_source(path) for path in python_files))
+        fetched_sources = await asyncio.gather(*(fetch_source(path) for path in scan_files))
+        sources = {
+            path: source
+            for fetched in fetched_sources
+            if fetched is not None
+            for path, source in [fetched]
+        }
         findings: list[dict[str, Any]] = []
-        for path, source in sources:
+        for path in python_files:
+            source = sources.get(path)
+            if source is None:
+                continue
             for finding in TaintEngine().analyze(source, file_path=path):
+                source_lines = source.splitlines()
+                line_start = max(0, finding.line - 16)
+                line_end = min(len(source_lines), finding.line + 15)
                 findings.append(
                     {
                         "rule_id": finding.rule_id,
@@ -228,9 +320,81 @@ class PullRequestWorker:
                         "sink": finding.sink,
                         "message": f"Untrusted data from {finding.source} reaches {finding.sink}.",
                         "repository": event.repository,
+                        "code_snippet": "\n".join(source_lines[line_start:line_end])[:4000],
                     }
                 )
-        return findings, unsupported_files
+        scanner_findings, scanner_status = await asyncio.to_thread(scan_sources, sources)
+        for finding in scanner_findings:
+            source = sources.get(finding["file"])
+            source_lines = source.splitlines() if source is not None else []
+            line = finding["line"]
+            finding["code_snippet"] = "\n".join(
+                source_lines[max(0, line - 16):min(len(source_lines), line + 15)]
+            )[:4000]
+            finding["scanner_severity"] = finding.get("severity")
+            finding["repository"] = event.repository
+            findings.append(finding)
+        return findings, unsupported_files, scanner_status
+
+    async def _attach_ai_suggestions(
+        self,
+        findings: list[dict[str, Any]],
+        raw_findings: list[dict[str, Any]],
+    ) -> None:
+        if not self.ai_fix_url or self.max_ai_fixes == 0:
+            return
+        raw_by_location = {
+            (finding.get("file"), finding.get("line")): finding
+            for finding in raw_findings
+            if finding.get("scanner_severity") is None
+        }
+        candidates = [
+            finding
+            for finding in findings
+            if finding.get("severity") in {"CRITICAL", "HIGH"}
+            and (finding.get("file"), finding.get("line")) in raw_by_location
+        ][: self.max_ai_fixes]
+        async with httpx.AsyncClient(timeout=90.0) as ai_client:
+            for finding in candidates:
+                raw = raw_by_location[(finding["file"], finding["line"])]
+                try:
+                    response = await ai_client.post(
+                        f"{self.ai_fix_url}/api/fix",
+                        json={
+                            "code": raw.get("code_snippet", ""),
+                            "language": "python",
+                            "vulnerability": (
+                                f"{finding.get('rule_id')}: {finding.get('message')}"
+                            ),
+                        },
+                    )
+                    response.raise_for_status()
+                    result = response.json()
+                    suggestion = result.get("result") if isinstance(result, dict) else None
+                    if (
+                        isinstance(result, dict)
+                        and result.get("success") is True
+                        and isinstance(suggestion, str)
+                        and suggestion.strip()
+                    ):
+                        finding["remediation"] = (
+                            f"{finding.get('remediation', '')}\n\n"
+                            "AI-generated suggestion (review before applying):\n"
+                            f"```\n{suggestion[:4000]}\n```"
+                        ).strip()
+                    else:
+                        _LOGGER.warning(
+                            "AI fix service returned no suggestion for %s:%s",
+                            finding.get("file"),
+                            finding.get("line"),
+                        )
+                except (httpx.HTTPError, ValueError) as error:
+                    _LOGGER.warning(
+                        "AI fix request failed for %s:%s: %s",
+                        finding.get("file"),
+                        finding.get("line"),
+                        error,
+                    )
 
 
 async def run_worker() -> None:

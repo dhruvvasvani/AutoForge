@@ -5,7 +5,9 @@ package com.autoforge.service;
 // GitHub's REST API is the next seam (left as TODO - needs a GitHub OAuth
 // App / PAT, intentionally not hardcoded here).
 import com.autoforge.dto.RepositoryResponse;
+import com.autoforge.dto.ScanProgressResponse;
 import com.autoforge.entity.Repository;
+import com.autoforge.entity.Scan;
 import com.autoforge.entity.User;
 import com.autoforge.exception.ApiException;
 import com.autoforge.repository.RepositoryRepository;
@@ -24,6 +26,8 @@ public class RepositoryService {
 
     private final RepositoryRepository repositoryRepository;
     private final UserRepository userRepository;
+    private final ScanService scanService;
+    private final GitHubLatestCommitResolver latestCommitResolver;
 
     public RepositoryResponse connectRepository(String userEmail, String githubRepoFullName) {
         User user = userRepository.findByEmail(userEmail)
@@ -66,6 +70,18 @@ public class RepositoryService {
         }
 
         repositoryRepository.delete(repository);
+    }
+
+    public List<ScanProgressResponse> getRepositoryScanProgress(Long repositoryId, String userEmail) {
+        return scanService.getRepositoryScanProgress(repositoryId, userEmail);
+    }
+
+    public Scan triggerRepositoryScan(String userEmail, Long repositoryId) {
+        Repository repository = repositoryRepository.findByIdAndUserEmail(repositoryId, userEmail)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Repository not found"));
+        String repositoryName = repository.getGithubRepoFullName();
+        String commitSha = latestCommitResolver.resolve(repositoryName);
+        return scanService.createScanJobFromPush(repositoryName, commitSha, "manual");
     }
 
     private RepositoryResponse toResponse(Repository repository) {

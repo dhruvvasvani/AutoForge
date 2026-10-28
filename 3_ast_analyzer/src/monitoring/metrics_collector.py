@@ -38,6 +38,18 @@ class MetricsCollector:
             "Resident memory used by the analyzer process.",
             registry=self.registry,
         )
+        self.http_requests = Counter(
+            "ast_http_requests",
+            "HTTP requests served by the analyzer API.",
+            labelnames=("method", "route", "status"),
+            registry=self.registry,
+        )
+        self.http_request_duration = Histogram(
+            "ast_http_request_duration_seconds",
+            "Time spent serving analyzer API requests.",
+            labelnames=("method", "route"),
+            registry=self.registry,
+        )
         self._metrics_server: Any = None
 
     @contextmanager
@@ -51,6 +63,36 @@ class MetricsCollector:
             raise ValueError(f"model must be one of {sorted(_MODEL_LABELS)}")
         with self.inference_latency.labels(model=model).time():
             yield
+
+    def record_http_request(
+        self,
+        method: str,
+        route: str,
+        status_code: int,
+        duration_seconds: float,
+    ) -> None:
+        if not isinstance(method, str) or not method:
+            raise ValueError("method must be a non-empty string")
+        if not isinstance(route, str) or not route:
+            raise ValueError("route must be a non-empty string")
+        if (
+            isinstance(status_code, bool)
+            or not isinstance(status_code, int)
+            or not 100 <= status_code <= 599
+        ):
+            raise ValueError("status_code must be an HTTP status code")
+        if (
+            isinstance(duration_seconds, bool)
+            or not isinstance(duration_seconds, (int, float))
+            or duration_seconds < 0
+        ):
+            raise ValueError("duration_seconds must be non-negative")
+        labels = {
+            "method": method.upper(),
+            "route": route,
+        }
+        self.http_requests.labels(**labels, status=str(status_code)).inc()
+        self.http_request_duration.labels(**labels).observe(duration_seconds)
 
     def record_findings(
         self,

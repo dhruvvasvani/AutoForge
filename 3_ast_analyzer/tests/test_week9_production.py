@@ -27,6 +27,7 @@ from src.optimization.batch_processor import CPGBatchProcessor, collate_cpg_grap
         ("tsx", "const View = () => <main />;", "program"),
         ("go", "package main\nfunc main() {}", "source_file"),
         ("java", "class Main { void run() {} }", "program"),
+        ("rust", "fn main() { let answer = 42; }", "source_file"),
     ],
 )
 def test_tree_sitter_engine_builds_structural_graphs(language, source, root_type):
@@ -57,7 +58,7 @@ def test_tree_sitter_engine_reports_syntax_errors_and_unsupported_languages():
     assert invalid.error_count > 0
 
     with pytest.raises(ValueError, match="Unsupported language"):
-        TreeSitterEngine().parse_source("code", "rust")
+        TreeSitterEngine().parse_source("code", "swift")
 
 
 def test_tree_sitter_engine_parses_source_files_by_extension(tmp_path):

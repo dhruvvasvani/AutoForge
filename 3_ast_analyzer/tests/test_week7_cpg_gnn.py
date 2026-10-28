@@ -5,7 +5,6 @@ import csv
 import json
 import sys
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
@@ -13,7 +12,12 @@ ANALYZER_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ANALYZER_ROOT))
 
 from src.ml.cpg_builder import EDGE_TYPES, build_cpg, merge_cpg_graphs
-from src.ml.cpg_training import load_cpg_dataset, stratified_split
+from src.ml.cpg_training import (
+    LabeledCPG,
+    _reject_held_out_overlap,
+    load_cpg_dataset,
+    stratified_split,
+)
 
 
 def test_cpg_contains_ast_cfg_and_data_flow_edges():
@@ -94,6 +98,29 @@ def test_dataset_loading_and_stratified_80_10_10_split(tmp_path):
     assert {example.label for example in validation} == {0, 1}
     assert {example.label for example in test} == {0, 1}
     assert len({id(example) for example in train + validation + test}) == len(examples)
+
+
+def test_stratified_split_keeps_duplicate_source_examples_together():
+    examples = [
+        *(LabeledCPG(f"vulnerable_{index} = 1", 1) for index in range(6)),
+        *(LabeledCPG(f"safe_{index} = 0", 0) for index in range(6)),
+        LabeledCPG("vulnerable_0 = 1", 0),
+    ]
+
+    train, validation, test = stratified_split(examples, seed=3)
+
+    source_sets = [{example.source for example in split} for split in (train, validation, test)]
+    assert not (source_sets[0] & source_sets[1])
+    assert not (source_sets[0] & source_sets[2])
+    assert not (source_sets[1] & source_sets[2])
+
+
+def test_held_out_dataset_rejects_source_overlap():
+    with pytest.raises(ValueError, match="also present in training or validation"):
+        _reject_held_out_overlap(
+            [LabeledCPG("def check():\n    return 1\n", 0)],
+            [LabeledCPG("\ndef check():\n    return 1\n", 1)],
+        )
 
 
 def test_pycode_vul_csv_keeps_original_and_patch_in_the_same_split(tmp_path):
@@ -198,8 +225,8 @@ def test_dataset_rejects_invalid_labels_and_syntax(tmp_path):
 
 def test_stratified_split_requires_both_classes():
     examples = [
-        *[SimpleNamespace(label=0, group_id=None) for _ in range(3)],
-        *[SimpleNamespace(label=1, group_id=None) for _ in range(2)],
+        *[LabeledCPG(f"safe_{index}", 0) for index in range(3)],
+        *[LabeledCPG(f"vulnerable_{index}", 1) for index in range(2)],
     ]
     with pytest.raises(ValueError, match="at least 3 examples per class"):
         stratified_split(examples)

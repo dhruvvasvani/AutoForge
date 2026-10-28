@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import ast
 import csv
+import hashlib
 import json
 import logging
 import random
@@ -148,10 +149,42 @@ def stratified_split(
 ) -> tuple[list[LabeledCPG], list[LabeledCPG], list[LabeledCPG]]:
     if isinstance(seed, bool) or not isinstance(seed, int):
         raise ValueError("seed must be an integer")
-    grouped: dict[str, list[LabeledCPG]] = {}
+    parent: dict[tuple[str, str | int], tuple[str, str | int]] = {}
+    source_owner: dict[bytes, tuple[str, str | int]] = {}
+
+    def find(key: tuple[str, str | int]) -> tuple[str, str | int]:
+        root = key
+        while parent[root] != root:
+            root = parent[root]
+        while parent[key] != key:
+            next_key = parent[key]
+            parent[key] = root
+            key = next_key
+        return root
+
+    def union(left: tuple[str, str | int], right: tuple[str, str | int]) -> None:
+        left_root = find(left)
+        right_root = find(right)
+        if left_root != right_root:
+            parent[right_root] = left_root
+
+    example_keys = []
     for index, example in enumerate(examples):
-        key = example.group_id or f"example:{index}"
-        grouped.setdefault(key, []).append(example)
+        key = (
+            ("group", example.group_id)
+            if example.group_id is not None
+            else ("example", index)
+        )
+        parent.setdefault(key, key)
+        example_keys.append(key)
+        source_digest = hashlib.sha256(example.source.strip().encode("utf-8")).digest()
+        previous_key = source_owner.setdefault(source_digest, key)
+        union(key, previous_key)
+
+    grouped: dict[tuple[str, str | int], list[LabeledCPG]] = {}
+    for key, example in zip(example_keys, examples):
+        grouped.setdefault(find(key), []).append(example)
+
     groups: dict[int, list[list[LabeledCPG]]] = {0: [], 1: []}
     for group in grouped.values():
         group_label = int(any(example.label == 1 for example in group))
@@ -225,6 +258,7 @@ def train_cpg_gnn(
     if test_dataset_path is not None:
         train_examples.extend(test_examples)
         test_examples = load_cpg_dataset(test_dataset_path)
+        _reject_held_out_overlap(train_examples + validation_examples, test_examples)
     encoder = CodeBERTEncoder(model_name=model_name, batch_size=batch_size, device=device)
     all_examples = train_examples + validation_examples + test_examples
     with tempfile.TemporaryDirectory(prefix="autoforge_cpg_features_") as cache_directory:
@@ -444,6 +478,26 @@ def _fit_gnn(
             "test": len(test_data),
         },
     }
+
+
+def _reject_held_out_overlap(
+    training_examples: Sequence[LabeledCPG],
+    test_examples: Sequence[LabeledCPG],
+) -> None:
+    training_sources = {
+        hashlib.sha256(example.source.strip().encode("utf-8")).digest()
+        for example in training_examples
+    }
+    overlapping_sources = sum(
+        hashlib.sha256(example.source.strip().encode("utf-8")).digest()
+        in training_sources
+        for example in test_examples
+    )
+    if overlapping_sources:
+        raise ValueError(
+            "held-out test dataset contains "
+            f"{overlapping_sources} source example(s) also present in training or validation data"
+        )
 
 
 def load_cpg_gnn(checkpoint_path: str | Path, device: str | None = None) -> Any:

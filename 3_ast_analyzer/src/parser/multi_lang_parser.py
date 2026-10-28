@@ -25,6 +25,10 @@ class MultiLangParser:
         ".jsx": "javascript",
         ".mjs": "javascript",
         ".cjs": "javascript",
+        ".ts": "typescript",
+        ".tsx": "tsx",
+        ".go": "go",
+        ".rs": "rust",
     }
 
     def parse_file(self, file_path: str | Path) -> ParsedUnit:
@@ -39,13 +43,23 @@ class MultiLangParser:
     ) -> ParsedUnit:
         if not isinstance(source, str):
             raise TypeError("source must be a string")
-        resolved_language = (language or self._EXTENSIONS.get(Path(file_path).suffix, "")).lower()
+        resolved_language = (
+            language or self._EXTENSIONS.get(Path(file_path).suffix.lower(), "")
+        ).lower()
         if resolved_language in {"py", "python"}:
             tree = ast.parse(source, filename=file_path)
             normalized = self._python_node(tree)
             resolved_language = "python"
-        elif resolved_language in {"java", "javascript", "js"}:
-            resolved_language = "javascript" if resolved_language == "js" else resolved_language
+        elif resolved_language in {
+            "java", "javascript", "js", "jsx", "mjs", "cjs",
+            "typescript", "ts", "tsx", "go", "rust", "rs",
+        }:
+            if resolved_language in {"js", "jsx", "mjs", "cjs"}:
+                resolved_language = "javascript"
+            elif resolved_language in {"ts"}:
+                resolved_language = "typescript"
+            elif resolved_language == "rs":
+                resolved_language = "rust"
             normalized = self._tree_sitter_tree(source, resolved_language)
         else:
             raise ValueError(f"Unsupported language: {resolved_language or '<unknown>'}")
@@ -63,7 +77,13 @@ class MultiLangParser:
                     for item in value
                 ]
             else:
-                result[field_name] = value
+                result[field_name] = (
+                    "..."
+                    if value is Ellipsis
+                    else repr(value)
+                    if isinstance(value, (bytes, complex))
+                    else value
+                )
         if hasattr(node, "lineno"):
             result["line"] = node.lineno
         return result

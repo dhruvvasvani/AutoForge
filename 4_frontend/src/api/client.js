@@ -165,11 +165,38 @@ export const dashboardAPI = {
 };
 
 export const analyzerAPI = {
+  health: () =>
+    analyzerClient.get('/health'),
+
+  parserHealth: () =>
+    analyzerClient.get('/api/v1/parser-health'),
+
   analyzeProject: (files) =>
     analyzerClient.post('/api/v1/analyze-project', { files }),
 
+  getMetricsHistory: (limit = 30) =>
+    analyzerClient.get('/api/v1/metrics/history', { params: { limit } }),
+
+  generateReport: (report) =>
+    analyzerClient.post('/api/v1/reports', report, {
+      responseType: 'blob',
+    }),
+
   webhookHealth: () =>
     webhookClient.get('/healthz'),
+};
+
+export const scanMetricsAPI = {
+  record: (metrics) =>
+    apiClient.post('/scan-metrics', { metrics }),
+
+  getHistory: (limit = 30) =>
+    apiClient.get('/scan-metrics', { params: { limit } }),
+};
+
+export const feedbackAPI = {
+  submit: (feedback) =>
+    apiClient.post('/feedback', feedback),
 };
 
 export const adminAPI = {
@@ -187,6 +214,21 @@ export const adminAPI = {
 
   getScans: () =>
     apiClient.get('/admin/scans'),
+
+  getMLOpsFeedback: (status = 'PENDING', untrainedOnly = false) =>
+    apiClient.get('/admin/mlops/feedback', { params: { status, untrainedOnly } }),
+
+  getMLOpsFeedbackSummary: () =>
+    apiClient.get('/admin/mlops/feedback/summary'),
+
+  reviewMLOpsFeedback: (feedbackId, status) =>
+    apiClient.patch(`/admin/mlops/feedback/${feedbackId}`, { status }),
+
+  markMLOpsFeedbackTrained: (feedbackId) =>
+    apiClient.post(`/admin/mlops/feedback/${feedbackId}/trained`),
+
+  markMLOpsFeedbackBatchTrained: (feedbackIds) =>
+    apiClient.post('/admin/mlops/feedback/trained/batch', { feedbackIds }),
 };
 
 export default apiClient;

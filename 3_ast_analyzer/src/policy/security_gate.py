@@ -8,6 +8,13 @@ from dataclasses import dataclass
 from typing import Any
 
 SEVERITIES = ("LOW", "MEDIUM", "HIGH", "CRITICAL")
+SEVERITY_ALIASES = {
+    "ERROR": "CRITICAL",
+    "FATAL": "CRITICAL",
+    "WARNING": "HIGH",
+    "NOTE": "LOW",
+    "INFO": "LOW",
+}
 
 
 @dataclass(frozen=True)
@@ -58,13 +65,19 @@ def evaluate_security_gate(
     counts = {severity: 0 for severity in SEVERITIES}
     blockers: list[dict[str, Any]] = []
     excluded_low_confidence = 0
+    unreachable_ignored = 0
     for index, finding in enumerate(findings):
         if not isinstance(finding, Mapping):
             raise ValueError(f"finding {index} must be an object")
-        severity = finding.get("severity", "LOW")
-        if not isinstance(severity, str) or severity.upper() not in SEVERITIES:
-            raise ValueError(f"finding {index} has unknown severity {severity!r}")
-        severity = severity.upper()
+        if finding.get("reachability") == "UNREACHABLE_NOISE":
+            unreachable_ignored += 1
+            continue
+        raw_severity = finding.get("severity", "LOW")
+        if not isinstance(raw_severity, str):
+            raise ValueError(f"finding {index} has unknown severity {raw_severity!r}")
+        severity = SEVERITY_ALIASES.get(raw_severity.upper(), raw_severity.upper())
+        if severity not in SEVERITIES:
+            raise ValueError(f"finding {index} has unknown severity {raw_severity!r}")
         confidence = finding.get("ml_confidence", 1.0)
         if (
             isinstance(confidence, bool)
@@ -128,6 +141,8 @@ def evaluate_security_gate(
     )
     if excluded_low_confidence:
         summary += f"; {excluded_low_confidence} finding(s) below ML confidence threshold"
+    if unreachable_ignored:
+        summary += f"; {unreachable_ignored} unreachable finding(s) excluded from the gate"
     return {
         "status": "PASSED" if passed else "FAILED",
         "passed": passed,
@@ -135,6 +150,7 @@ def evaluate_security_gate(
         "counts": counts,
         "findings_inspected": sum(counts.values()) + excluded_low_confidence,
         "excluded_low_confidence": excluded_low_confidence,
+        "unreachable_ignored": unreachable_ignored,
         "blockers": blockers,
         "policy": {
             "max_critical_allowed": policy.max_critical_allowed,

@@ -144,3 +144,28 @@ def test_model_forward_and_checkpoint_inference(tmp_path):
     }, checkpoint_path)
     prediction = ASTInference.from_checkpoint(checkpoint_path).predict([0.0] * len(FEATURE_NAMES))
     assert 0.0 <= prediction <= 1.0
+
+
+def test_ast_training_saves_checkpoint_loadable_by_inference(tmp_path):
+    pytest.importorskip("torch")
+    from src.ml.ast_training import train_ast_classifier
+    from src.ml.inference import ASTInference
+
+    dataset_path = tmp_path / "examples.json"
+    rows = []
+    for index in range(30):
+        vulnerable = index % 2
+        if vulnerable:
+            code = f"def sample_{index}(value):\n    return eval(value)\n"
+        else:
+            code = f"def sample_{index}(value):\n    return value + {index}\n"
+        rows.append({"code": code, "label": vulnerable, "group_id": f"sample:{index}"})
+    dataset_path.write_text(json.dumps(rows), encoding="utf-8")
+
+    checkpoint_path = tmp_path / "ast_classifier.pt"
+    result = train_ast_classifier(dataset_path, checkpoint_path, max_epochs=2, patience=2)
+
+    assert checkpoint_path.is_file()
+    assert result["split_sizes"] == {"train": 22, "validation": 4, "test": 4}
+    prediction = ASTInference.from_checkpoint(checkpoint_path).predict([0.0] * len(FEATURE_NAMES))
+    assert 0.0 <= prediction <= 1.0

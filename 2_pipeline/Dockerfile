@@ -10,4 +10,4 @@ RUN pip install --no-cache-dir -r pipeline-requirements.txt -r analyzer-requirem
 COPY 2_pipeline/ ./2_pipeline/
 COPY 3_ast_analyzer/ ./3_ast_analyzer/
 WORKDIR /app/2_pipeline
-CMD ["python", "worker.py"]
+CMD ["python", "queue/worker.py"]

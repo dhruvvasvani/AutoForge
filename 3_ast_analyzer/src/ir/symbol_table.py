@@ -3,10 +3,45 @@
 from __future__ import annotations
 
 import ast
+import hashlib
 import os
+import threading
+from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable
+
+_PARSE_CACHE_BUDGET = 32 * 1024 * 1024
+_PARSE_CACHE: OrderedDict[Path, tuple[bytes, str, ast.Module, int]] = OrderedDict()
+_PARSE_CACHE_SIZE = 0
+_PARSE_CACHE_LOCK = threading.Lock()
+
+
+def _parse_cached(path: Path, source: str) -> ast.Module:
+    global _PARSE_CACHE_SIZE
+    content = source.encode("utf-8")
+    digest = hashlib.sha256(content).digest()
+    with _PARSE_CACHE_LOCK:
+        cached = _PARSE_CACHE.get(path)
+        if cached is not None and cached[0] == digest:
+            _PARSE_CACHE.move_to_end(path)
+            return cached[2]
+
+    tree = ast.parse(source, filename=str(path))
+    weight = len(content) * 4
+    if weight > _PARSE_CACHE_BUDGET:
+        return tree
+    with _PARSE_CACHE_LOCK:
+        old = _PARSE_CACHE.pop(path, None)
+        if old is not None:
+            _PARSE_CACHE_SIZE -= old[3]
+        _PARSE_CACHE[path] = (digest, source, tree, weight)
+        _PARSE_CACHE_SIZE += weight
+        while _PARSE_CACHE_SIZE > _PARSE_CACHE_BUDGET:
+            _, evicted = _PARSE_CACHE.popitem(last=False)
+            _PARSE_CACHE_SIZE -= evicted[3]
+    return tree
 
 
 @dataclass(frozen=True)
@@ -48,6 +83,8 @@ class SymbolTable:
         self.functions_by_short_name: dict[str, list[FunctionSymbol]] = {}
         self.scopes: dict[str, ScopeSymbol] = {}
         self.imports: dict[str, dict[str, str]] = {}
+        self.module_sources: dict[str, str] = {}
+        self.module_trees: dict[str, ast.Module] = {}
 
     @classmethod
     def from_project(cls, project_root: str | Path) -> "SymbolTable":
@@ -55,6 +92,7 @@ class SymbolTable:
         if not root.is_dir():
             raise NotADirectoryError(root)
         table = cls()
+        module_files: list[tuple[str, Path]] = []
         for directory, child_directories, filenames in os.walk(root):
             child_directories[:] = sorted(
                 name for name in child_directories
@@ -69,11 +107,31 @@ class SymbolTable:
                 module = ".".join(relative.with_suffix("").parts)
                 if module.endswith(".__init__"):
                     module = module[: -len(".__init__")]
-                table.modules[module] = path
-                tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-                table._collect_scopes(tree, module, path)
-                table._collect_functions(tree, module, path)
+                module_files.append((module, path))
+
+        def read_and_parse(item: tuple[str, Path]) -> tuple[str, Path, str, ast.Module]:
+            module, path = item
+            source = path.read_text(encoding="utf-8")
+            return module, path, source, _parse_cached(path.resolve(), source)
+
+        worker_count = min(8, len(module_files), os.cpu_count() or 1)
+        if worker_count > 1:
+            with ThreadPoolExecutor(max_workers=worker_count) as executor:
+                parsed_modules = executor.map(read_and_parse, module_files)
+                for module, path, source, tree in parsed_modules:
+                    table._add_module(module, path, source, tree)
+        else:
+            for item in module_files:
+                module, path, source, tree = read_and_parse(item)
+                table._add_module(module, path, source, tree)
         return table
+
+    def _add_module(self, module: str, path: Path, source: str, tree: ast.Module) -> None:
+        self.modules[module] = path
+        self.module_sources[module] = source
+        self.module_trees[module] = tree
+        self._collect_scopes(tree, module, path)
+        self._collect_functions(tree, module, path)
 
     def _collect_scopes(self, tree: ast.Module, module: str, path: Path) -> None:
         module_scope = ScopeSymbol(module, "module", None)

@@ -28,7 +28,7 @@ RUN apt-get update \
 
 COPY --from=builder /wheelhouse /wheelhouse
 RUN python -m pip install --no-cache-dir --no-index --find-links=/wheelhouse \
-    fastapi httpx prometheus-client psutil tree-sitter tree-sitter-language-pack "uvicorn[standard]" \
+    checkov fastapi httpx prometheus-client psutil semgrep tree-sitter tree-sitter-language-pack "uvicorn[standard]" \
     && rm -rf /wheelhouse
 
 WORKDIR /app

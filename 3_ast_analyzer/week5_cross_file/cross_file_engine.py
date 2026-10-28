@@ -11,12 +11,18 @@ parser = Parser(PY_LANGUAGE)
 
 
 class CrossFileReachabilityAnalyzer:
+    HTTP_ROUTE_DECORATORS = {
+        "api_route", "delete", "get", "options", "patch", "post", "put", "route",
+        "websocket",
+    }
+
     def __init__(self, entry_points=None, depth_limit=None):
         self.entry_points = entry_points or ["main", "handle_login", "get_user_profile"]
         self.depth_limit = depth_limit
         self.import_map = {}
         self.call_graph = {}
         self.dotted_to_key = {}
+        self.route_entry_points = set()
 
     def _parse_imports(self, root_node, code):
         local_map = {}
@@ -83,6 +89,8 @@ class CrossFileReachabilityAnalyzer:
                     previous = current_func
                     current_func = f"{module_key}::{fname}"
                     self.call_graph.setdefault(current_func, [])
+                    if self._has_http_route_decorator(node):
+                        self.route_entry_points.add(current_func)
                     for child in node.children:
                         traverse(child)
                     current_func = previous
@@ -102,6 +110,7 @@ class CrossFileReachabilityAnalyzer:
     def build_project_graph(self, source_root):
         self.call_graph = {}
         self.dotted_to_key = {}
+        self.route_entry_points = set()
         py_files = []
         for dirpath, _, files in os.walk(source_root):
             for fname in files:
@@ -119,18 +128,21 @@ class CrossFileReachabilityAnalyzer:
         return self.call_graph
 
     def find_reachable_with_depth(self):
+        return self._find_reachable(self.depth_limit)
+
+    def _find_reachable(self, depth_limit):
         depths = {}
         queue = deque()
 
         for func_key in self.call_graph:
             short_name = func_key.split("::")[-1]
-            if short_name in self.entry_points:
+            if short_name in self.entry_points or func_key in self.route_entry_points:
                 depths[func_key] = 0
                 queue.append((func_key, 0))
 
         while queue:
             func, depth = queue.popleft()
-            if self.depth_limit is not None and depth >= self.depth_limit:
+            if depth_limit is not None and depth >= depth_limit:
                 continue
             for callee in self.call_graph.get(func, []):
                 if callee not in depths:
@@ -139,9 +151,40 @@ class CrossFileReachabilityAnalyzer:
 
         return depths
 
+    @classmethod
+    def _has_http_route_decorator(cls, function_node):
+        decorated = function_node.parent
+        if decorated is None or decorated.type != "decorated_definition":
+            return False
+        for decorator in decorated.named_children:
+            if decorator.type != "decorator" or not decorator.named_children:
+                continue
+            expression = decorator.named_children[0]
+            target = (
+                expression.child_by_field_name("function")
+                if expression.type == "call"
+                else expression
+            )
+            if target is None:
+                continue
+            if target.type == "identifier":
+                name = target.text.decode("utf-8", errors="replace")
+            elif target.type == "attribute":
+                attribute = target.child_by_field_name("attribute")
+                name = (
+                    attribute.text.decode("utf-8", errors="replace")
+                    if attribute is not None else ""
+                )
+            else:
+                continue
+            if name.lower() in cls.HTTP_ROUTE_DECORATORS:
+                return True
+        return False
+
     def analyze(self, source_root, scan_results_path):
         self.build_project_graph(source_root)
         depths = self.find_reachable_with_depth()
+        all_reachable = self._find_reachable(None)
 
         with open(scan_results_path, "r", encoding="utf-8") as f:
             raw = json.load(f)
@@ -152,14 +195,34 @@ class CrossFileReachabilityAnalyzer:
         tagged = []
         for finding in findings:
             func_name = finding.get("function") or finding.get("function_name")
-            matched_key = next((k for k in depths if k.endswith(f"::{func_name}")), None)
+            normalized_name = (
+                func_name.replace("::", ".").strip(".")
+                if isinstance(func_name, str) and func_name.strip()
+                else None
+            )
+            candidates = [
+                key for key in self.call_graph
+                if normalized_name is not None
+                and (
+                    key.replace("::", ".") == normalized_name
+                    or key.replace("::", ".").endswith(f".{normalized_name}")
+                )
+            ]
             f = dict(finding)
-            if matched_key is not None:
+            matched_key = candidates[0] if len(candidates) == 1 else None
+            if matched_key is not None and matched_key in depths:
                 f["reachability"] = "REACHABLE_CODE"
                 f["depth"] = depths[matched_key]
                 f["depth_limited"] = self.depth_limit is not None and depths[matched_key] >= (self.depth_limit or 0)
-            else:
+            elif matched_key is not None and matched_key in all_reachable:
+                f["reachability"] = "UNKNOWN"
+                f["depth"] = None
+                f["depth_limited"] = True
+            elif matched_key is not None:
                 f["reachability"] = "UNREACHABLE_NOISE"
+                f["depth"] = None
+            else:
+                f["reachability"] = "UNKNOWN"
                 f["depth"] = None
             tagged.append(f)
 

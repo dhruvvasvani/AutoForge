@@ -1,9 +1,8 @@
-import React from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
-const PrivateRoute = ({ element, requiredRole = null }) => {
-  const { isAuthenticated, isAdmin, loading } = useAuth();
+const PrivateRoute = ({ element, requiredRole = null, requiredRoles = null }) => {
+  const { isAuthenticated, hasAnyRole, loading } = useAuth();
 
   if (loading) {
     return (
@@ -20,7 +19,8 @@ const PrivateRoute = ({ element, requiredRole = null }) => {
     return <Navigate to="/login" replace />;
   }
 
-  if (requiredRole === 'admin' && !isAdmin) {
+  const roles = requiredRoles || (requiredRole ? [requiredRole] : []);
+  if (roles.length > 0 && !hasAnyRole(...roles)) {
     return <Navigate to="/dashboard" replace />;
   }
 
@@ -28,4 +28,3 @@ const PrivateRoute = ({ element, requiredRole = null }) => {
 };
 
 export default PrivateRoute;
-

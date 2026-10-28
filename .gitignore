@@ -3,6 +3,8 @@ venv/
 __pycache__/
 *.pyc
 *.log
+3_ast_analyzer/*.pt
+3_ast_analyzer/src/ml/*.pt
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/

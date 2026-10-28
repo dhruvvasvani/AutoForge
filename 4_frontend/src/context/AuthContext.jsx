@@ -1,4 +1,4 @@
-import React, { createContext, useState, useContext, useEffect } from 'react';
+import { createContext, useState, useContext, useEffect } from 'react';
 import { authAPI } from '../api/client';
 
 const AuthContext = createContext();
@@ -121,7 +121,11 @@ export const AuthProvider = ({ children }) => {
 
   const isAuthenticated = !!token && !!user;
 
-  const isAdmin = user?.role === 'ADMIN';
+  const hasAnyRole = (...roles) => {
+    const userRole = typeof user?.role === 'string' ? user.role.toUpperCase() : '';
+    return roles.some((role) => userRole === role.toUpperCase());
+  };
+  const isAdmin = hasAnyRole('ADMIN');
 
   const value = {
     user,
@@ -130,6 +134,7 @@ export const AuthProvider = ({ children }) => {
     error,
     isAuthenticated,
     isAdmin,
+    hasAnyRole,
     login,
     register,
     logout,
@@ -154,4 +159,3 @@ export const useAuth = () => {
 };
 
 export default AuthContext;
-

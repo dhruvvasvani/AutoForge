@@ -6,6 +6,9 @@ import com.autoforge.entity.Scan;
 import com.autoforge.entity.ScanStatus;
 import com.autoforge.entity.Vulnerability;
 import com.autoforge.entity.WebhookEvent;
+import com.autoforge.dto.ScanProgressRequest;
+import com.autoforge.dto.ScanProgressResponse;
+import com.autoforge.dto.ScanFindingResponse;
 import com.autoforge.exception.ApiException;
 import com.autoforge.repository.FixRepository;
 import com.autoforge.repository.RepositoryRepository;
@@ -18,6 +21,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -54,6 +58,7 @@ public class ScanService {
         scan.setWebhookEvent(event);
         scan.setCommitSha(commitSha);
         scan.setStatus(ScanStatus.QUEUED);
+        scan.setProgressStage("QUEUED");
 
         Scan saved = scanRepository.save(scan);
         enqueueScanJob(saved, repoFullName, commitSha);
@@ -77,24 +82,119 @@ public class ScanService {
     }
 
     public Scan persistScanResults(Long scanId, JsonNode semgrepFindings, JsonNode checkovFindings,
-                                   JsonNode astFindings, Double combinedRiskScore) {
+                                   JsonNode astFindings, JsonNode taggedFindings,
+                                   Double combinedRiskScore) {
         Scan scan = scanRepository.findById(scanId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Scan not found: " + scanId));
 
-        if (semgrepFindings != null) {
-            semgrepFindings.forEach(f -> saveFinding(scan, f, "SEMGREP"));
-        }
-        if (checkovFindings != null) {
-            checkovFindings.forEach(f -> saveFinding(scan, f, "CHECKOV"));
-        }
-        if (astFindings != null) {
-            astFindings.forEach(f -> saveFinding(scan, f, "AST"));
+        if (taggedFindings != null) {
+            taggedFindings.forEach(f -> saveFinding(
+                    scan,
+                    f,
+                    f.path("source").asText("AST").toUpperCase(java.util.Locale.ROOT)
+            ));
+        } else {
+            if (semgrepFindings != null) {
+                semgrepFindings.forEach(f -> saveFinding(scan, f, "SEMGREP"));
+            }
+            if (checkovFindings != null) {
+                checkovFindings.forEach(f -> saveFinding(scan, f, "CHECKOV"));
+            }
+            if (astFindings != null) {
+                astFindings.forEach(f -> saveFinding(scan, f, "AST"));
+            }
         }
 
         scan.setCombinedRiskScore(combinedRiskScore);
         scan.setStatus(ScanStatus.COMPLETED);
+        scan.setProgressStage("COMPLETED");
+        scan.setProgressMessage("Scan results persisted");
+        if (scan.getStartedAt() == null) {
+            scan.setStartedAt(Instant.now());
+        }
         scan.setCompletedAt(Instant.now());
         return scanRepository.save(scan);
+    }
+
+    public ScanProgressResponse updateScanProgress(Long scanId, ScanProgressRequest progress) {
+        Scan scan = scanRepository.findById(scanId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Scan not found: " + scanId));
+        if (scan.getStatus() == ScanStatus.COMPLETED || scan.getStatus() == ScanStatus.FAILED) {
+            return toProgressResponse(scan);
+        }
+        Instant now = Instant.now();
+        String stage = progress.stage().trim();
+        scan.setProgressStage(stage);
+        scan.setProgressMessage(progress.message());
+        if (scan.getStartedAt() == null) {
+            scan.setStartedAt(now);
+        }
+        scan.setStatus(ScanStatus.RUNNING);
+        if ("FAILED".equalsIgnoreCase(stage)) {
+            scan.setStatus(ScanStatus.FAILED);
+            scan.setCompletedAt(now);
+        } else if ("COMPLETED".equalsIgnoreCase(stage)) {
+            scan.setStatus(ScanStatus.COMPLETED);
+            scan.setCompletedAt(now);
+        }
+        return toProgressResponse(scanRepository.save(scan));
+    }
+
+    @Transactional(readOnly = true)
+    public ScanProgressResponse getScanProgress(Long scanId, String userEmail) {
+        Scan scan = scanRepository.findByIdAndRepositoryUserEmail(scanId, userEmail)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Scan not found"));
+        return toProgressResponse(scan);
+    }
+
+    @Transactional(readOnly = true)
+    public java.util.List<ScanFindingResponse> getScanFindings(Long scanId, String userEmail) {
+        scanRepository.findByIdAndRepositoryUserEmail(scanId, userEmail)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Scan not found"));
+        return vulnerabilityRepository.findByScanId(scanId).stream()
+                .map(ScanService::toFindingResponse)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public java.util.List<ScanProgressResponse> getRepositoryScanProgress(Long repositoryId, String userEmail) {
+        if (repositoryRepository.findByIdAndUserEmail(repositoryId, userEmail).isEmpty()) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "Repository not found");
+        }
+        return scanRepository.findTop20ByRepositoryIdOrderByCreatedAtDesc(repositoryId)
+                .stream()
+                .map(ScanService::toProgressResponse)
+                .toList();
+    }
+
+    private static ScanProgressResponse toProgressResponse(Scan scan) {
+        return new ScanProgressResponse(
+                scan.getId(),
+                scan.getStatus().name(),
+                scan.getProgressStage(),
+                scan.getProgressMessage(),
+                scan.getCommitSha(),
+                scan.getCreatedAt(),
+                scan.getStartedAt(),
+                scan.getCompletedAt()
+        );
+    }
+
+    private static ScanFindingResponse toFindingResponse(Vulnerability finding) {
+        return new ScanFindingResponse(
+                finding.getId(),
+                finding.getSourceScanner(),
+                finding.getFilePath(),
+                finding.getLineNumber(),
+                finding.getRuleId(),
+                finding.getSeverity(),
+                finding.getIsReachable(),
+                finding.getCombinedRiskScore(),
+                finding.getPriority(),
+                finding.getStatus(),
+                finding.getDescription(),
+                finding.getCreatedAt()
+        );
     }
 
     /** Saves one finding and, if the worker attached an AI fix, the Fix row too. */

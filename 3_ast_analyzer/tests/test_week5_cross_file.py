@@ -8,7 +8,7 @@ sys.path.insert(0, str(ANALYZER_ROOT))
 
 from src.analysis.cross_file_resolver import CrossFileResolver
 from src.ir.symbol_table import SymbolTable
-from week4_pipeline.pipeline_cli import run_cross_file
+from week4_pipeline.pipeline_cli import run_cross_file, run_single_file
 
 
 def test_cross_file_taint_binds_keyword_arguments(tmp_path):
@@ -138,5 +138,84 @@ def test_pipeline_cli_uses_canonical_cross_file_reachability(tmp_path):
         "json",
     )
 
-    assert result["summary"]["noise_filtered"] == 1
-    assert result["filtered_noise"][0]["depth"] is None
+    assert result["summary"]["unverified"] == 1
+    assert result["unverified_findings"][0]["depth"] is None
+
+
+def test_pipeline_cli_keeps_unresolved_findings_in_unverified_output(tmp_path):
+    (tmp_path / "main.py").write_text(
+        "def main():\n    return 1\n",
+        encoding="utf-8",
+    )
+    scan_path = tmp_path / "findings.json"
+    scan_path.write_text(
+        '[{"rule_id":"MISSING_FUNCTION"},{"function":"absent"}]',
+        encoding="utf-8",
+    )
+
+    result = run_cross_file(
+        tmp_path,
+        scan_path,
+        tmp_path / "out.json",
+        ["main"],
+        None,
+        "json",
+    )
+
+    assert result["summary"]["unverified"] == 2
+    assert len(result["unverified_findings"]) == 2
+
+
+def test_pipeline_cli_recognizes_http_route_decorators_as_entry_points(tmp_path):
+    source_path = tmp_path / "routes.py"
+    source_path.write_text(
+        "@router.get('/items')\n"
+        "def list_items():\n"
+        "    load_items()\n"
+        "def load_items():\n"
+        "    return []\n",
+        encoding="utf-8",
+    )
+    scan_path = tmp_path / "findings.json"
+    scan_path.write_text(
+        '[{"function":"routes.list_items"},{"function":"routes.load_items"}]',
+        encoding="utf-8",
+    )
+
+    result = run_cross_file(
+        tmp_path,
+        scan_path,
+        tmp_path / "out.json",
+        [],
+        None,
+        "json",
+    )
+
+    assert result["summary"]["reachable"] == 2
+    assert [finding["reachability"] for finding in result["clean_findings"]] == [
+        "REACHABLE_CODE",
+        "REACHABLE_CODE",
+    ]
+
+
+def test_single_file_pipeline_preserves_unresolved_findings(tmp_path):
+    source_path = tmp_path / "main.py"
+    source_path.write_text(
+        "def main():\n    return 1\n",
+        encoding="utf-8",
+    )
+    scan_path = tmp_path / "findings.json"
+    scan_path.write_text(
+        '[{"file":"main.py","rule_id":"MISSING_LINE"}]',
+        encoding="utf-8",
+    )
+
+    result = run_single_file(
+        source_path,
+        scan_path,
+        tmp_path / "out.json",
+        ["main"],
+    )
+
+    assert result["summary"]["unverified"] == 1
+    assert result["unverified_findings"][0]["reachability"] == "UNKNOWN"

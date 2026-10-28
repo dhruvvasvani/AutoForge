@@ -1,11 +1,27 @@
-import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, Link } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import PrivateRoute from './components/PrivateRoute';
 
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import DashboardPage from './pages/DashboardPage';
+import LandingPage from './pages/LandingPage';
+import LocalAnalyzer from './components/LocalAnalyzer';
+
+function LocalAnalyzerPage() {
+  return (
+    <div className="standalone-analyzer-page">
+      <header className="standalone-analyzer-page__header">
+        <Link to="/" className="standalone-analyzer-page__brand">AutoForge</Link>
+        <p>Local AST scans work without the account backend. Scan history and feedback sync are optional.</p>
+        <Link to="/">Back to home</Link>
+      </header>
+      <main className="standalone-analyzer-page__content">
+        <LocalAnalyzer />
+      </main>
+    </div>
+  );
+}
 
 const LoadingScreen = () => (
   <div className="flex items-center justify-center min-h-screen bg-gray-50">
@@ -40,14 +56,13 @@ function AppRoutes() {
       />
 
       <Route
+        path="/analyze"
+        element={<LocalAnalyzerPage />}
+      />
+
+      <Route
         path="/"
-        element={
-          isAuthenticated ? (
-            <Navigate to="/dashboard" replace />
-          ) : (
-            <Navigate to="/login" replace />
-          )
-        }
+        element={<LandingPage />}
       />
 
       <Route path="*" element={<Navigate to="/" replace />} />

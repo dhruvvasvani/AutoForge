@@ -10,6 +10,18 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping
 
 SEVERITY_ORDER = {"LOW": 1, "MEDIUM": 2, "HIGH": 3, "CRITICAL": 4}
+SEVERITY_ALIASES = {
+    "ERROR": "CRITICAL",
+    "FATAL": "CRITICAL",
+    "WARNING": "HIGH",
+    "NOTE": "LOW",
+    "INFO": "LOW",
+}
+
+
+def _normalize_severity(value: Any) -> str:
+    severity = str(value).upper()
+    return SEVERITY_ALIASES.get(severity, severity)
 
 
 def evaluate_findings(
@@ -20,17 +32,27 @@ def evaluate_findings(
 ) -> dict[str, Any]:
     if isinstance(max_score, bool) or not isinstance(max_score, (int, float)) or not math.isfinite(max_score):
         raise ValueError("max_score must be finite numeric")
-    fail_levels = {severity.upper() for severity in fail_on_severity}
+    fail_levels = {_normalize_severity(severity) for severity in fail_on_severity}
     unknown = fail_levels - set(SEVERITY_ORDER)
     if unknown:
         raise ValueError(f"Unknown severity threshold(s): {sorted(unknown)}")
     blockers: list[dict[str, Any]] = []
     inspected = 0
+    unreachable_ignored = 0
     for index, finding in enumerate(findings):
         if not isinstance(finding, Mapping):
             raise ValueError(f"Finding {index} must be an object")
         inspected += 1
-        severity = str(finding.get("severity", "LOW")).upper()
+        reachability = finding.get(
+            "reachability",
+            finding.get("properties", {}).get("reachability")
+            if isinstance(finding.get("properties"), Mapping)
+            else None,
+        )
+        if reachability == "UNREACHABLE_NOISE":
+            unreachable_ignored += 1
+            continue
+        severity = _normalize_severity(finding.get("severity", "LOW"))
         if severity not in SEVERITY_ORDER:
             raise ValueError(f"Finding {index} has unknown severity {severity!r}")
         score = finding.get("combined_risk_score", finding.get("final_score"))
@@ -47,6 +69,7 @@ def evaluate_findings(
     return {
         "passed": not blockers,
         "findings_inspected": inspected,
+        "unreachable_ignored": unreachable_ignored,
         "blockers": blockers,
         "max_score": float(max_score),
         "fail_on_severity": sorted(fail_levels, key=lambda item: SEVERITY_ORDER[item], reverse=True),
@@ -69,6 +92,7 @@ def _findings_from_report(data: Any) -> list[Mapping[str, Any]]:
                 properties = result.get("properties") or {}
                 findings.append({
                     "rule_id": result.get("ruleId"),
+                    "reachability": properties.get("reachability"),
                     "severity": properties.get(
                         "severity",
                         {"error": "HIGH", "warning": "MEDIUM", "note": "LOW"}.get(

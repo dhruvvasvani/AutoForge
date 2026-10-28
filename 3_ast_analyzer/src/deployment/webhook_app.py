@@ -9,6 +9,7 @@ import os
 import re
 
 from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
 
 from src.integration.webhook_server import PullRequestEvent, create_app
 from src.monitoring.logger import get_security_logger, log_security_event
@@ -43,6 +44,23 @@ def create_webhook_app(
         queue.enqueue(event)
 
     app = create_app(webhook_secret=secret, event_handler=enqueue_event)
+    configured_origins = [
+        origin.strip()
+        for origin in os.getenv("WEBHOOK_CORS_ORIGINS", "").split(",")
+        if origin.strip()
+    ]
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=configured_origins,
+        allow_origin_regex=(
+            None
+            if configured_origins
+            else r"https?://(?:localhost|127\.0\.0\.1)(?::\d+)?"
+        ),
+        allow_credentials=False,
+        allow_methods=["GET"],
+        allow_headers=["Content-Type"],
+    )
     app.state.job_queue = queue
     app.state.metrics = metrics
     app.state.rule_tuner = rule_tuner
@@ -121,14 +139,24 @@ def create_webhook_app(
         return {"status": "submitted", "fingerprint": fingerprint.lower()}
 
     @app.get("/healthz")
-    async def healthcheck() -> dict[str, str]:
+    async def healthcheck() -> dict[str, object]:
         if not app.state.webhook_secret:
             raise HTTPException(status_code=503, detail="WEBHOOK_SECRET is not configured")
         if not configured_repository:
             raise HTTPException(status_code=503, detail="GITHUB_REPOSITORY is not configured")
+        worker_credentials_configured = bool(os.getenv("GITHUB_TOKEN", "").strip())
+        if not worker_credentials_configured:
+            raise HTTPException(
+                status_code=503,
+                detail="GITHUB_TOKEN is not configured for the pull-request worker",
+            )
         if not queue.healthcheck():
             raise HTTPException(status_code=503, detail="Job queue is unavailable")
-        return {"status": "ready"}
+        return {
+            "status": "ready",
+            "queue": queue.counts(),
+            "worker_credentials_configured": worker_credentials_configured,
+        }
 
     @app.get("/metrics")
     async def metrics_endpoint() -> Response:

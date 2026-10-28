@@ -42,6 +42,12 @@ public class Scan {
     @Column(name = "combined_risk_score")
     private Double combinedRiskScore;
 
+    @Column(name = "progress_stage", length = 80)
+    private String progressStage;
+
+    @Column(name = "progress_message", length = 500)
+    private String progressMessage;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt = Instant.now();
 }

@@ -153,7 +153,7 @@ class ScanWorker:
             return False
 
     def emit(self, scan_id, stage, status="OK", message=""):
-        """Stage event for live logs. Backend/frontend can subscribe to the Redis channel."""
+        """Publish telemetry and persist the latest scan progress in the backend."""
         event = {
             "scan_id": scan_id,
             "stage": stage,
@@ -164,7 +164,18 @@ class ScanWorker:
         try:
             self.redis_client.publish(EVENTS_CHANNEL, json.dumps(event))
         except Exception as e:
-            logger.debug("emit failed: %s", e)
+            logger.warning("Could not publish scan progress event: %s", e)
+        if str(scan_id).isdigit() and BACKEND_URL and INTERNAL_TOKEN:
+            try:
+                response = requests.post(
+                    f"{BACKEND_URL}/api/internal/scans/{scan_id}/progress",
+                    json={"stage": stage, "status": status, "message": message},
+                    headers={"X-AutoForge-Internal-Token": INTERNAL_TOKEN},
+                    timeout=5,
+                )
+                response.raise_for_status()
+            except requests.RequestException as error:
+                logger.warning("Could not persist scan progress for %s: %s", scan_id, error)
 
     def push_result(self, result):
         try:
@@ -574,6 +585,7 @@ class ScanWorker:
             "semgrep": [item(f) for f in actionable if f.get("source") == "semgrep"],
             "checkov": [item(f) for f in actionable if f.get("source") == "checkov"],
             "tagged_findings": [item(f) for f in actionable + ast["filtered_noise"]],
+            "ast": [item(f) for f in actionable + ast["filtered_noise"]],
             "combinedRiskScore": max(scores) if scores else None,
         }
         if not INTERNAL_TOKEN:

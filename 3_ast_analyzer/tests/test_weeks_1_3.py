@@ -40,6 +40,28 @@ def test_week1_python_parser_and_scope_aware_symbols(tmp_path):
     assert scope.variables["result"].kind == "variable"
 
 
+@pytest.mark.parametrize(
+    ("extension", "source", "language", "root_type"),
+    [
+        (".java", "class Main { void run() {} }", "java", "program"),
+        (".js", "function run() { return 1; }", "javascript", "program"),
+        (".ts", "const value: number = 1;", "typescript", "program"),
+        (".tsx", "const View = () => <main />;", "tsx", "program"),
+        (".go", "package main\nfunc main() {}", "go", "source_file"),
+        (".rs", "fn main() {}", "rust", "source_file"),
+    ],
+)
+def test_week1_parser_facade_supports_tree_sitter_engine_languages(
+    tmp_path, extension, source, language, root_type
+):
+    source_file = tmp_path / f"source{extension}"
+
+    parsed = MultiLangParser().parse_source(source, str(source_file))
+
+    assert parsed.language == language
+    assert parsed.tree["type"] == root_type
+
+
 def test_week2_cfg_models_branches_loop_and_exit():
     cfg = CFGBuilder().build(
         "def inspect(flag, items):\n"
@@ -134,3 +156,73 @@ def test_week3_reachability_links_entry_point_to_cross_file_callee(tmp_path):
     assert "service.handlers.process" in result["reachable_functions"]
     assert result["tagged_findings"][0]["reachability"] == "REACHABLE_CODE"
     assert result["tagged_findings"][1]["reachability"] == "UNREACHABLE_NOISE"
+
+
+def test_week3_reachability_uses_http_route_decorators_as_entry_points(tmp_path):
+    (tmp_path / "api.py").write_text(
+        "from fastapi import APIRouter\n"
+        "router = APIRouter()\n"
+        "@router.get('/items')\n"
+        "def list_items():\n"
+        "    load_items()\n"
+        "def load_items():\n"
+        "    return []\n"
+        "def unused():\n"
+        "    return 0\n",
+        encoding="utf-8",
+    )
+
+    result = ReachabilityAnalyzer(entry_points=[]).analyze_project(
+        tmp_path,
+        [
+            {"function": "api.list_items", "rule_id": "route"},
+            {"function": "api.load_items", "rule_id": "callee"},
+            {"function": "api.unused", "rule_id": "dead"},
+        ],
+    )
+
+    assert result["tagged_findings"][0]["reachability"] == "REACHABLE_CODE"
+    assert result["tagged_findings"][1]["reachability"] == "REACHABLE_CODE"
+    assert result["tagged_findings"][2]["reachability"] == "UNREACHABLE_NOISE"
+
+
+def test_week3_nested_route_location_resolves_to_innermost_function(tmp_path):
+    (tmp_path / "app.py").write_text(
+        "def init(app):\n"
+        "    @app.post('/items')\n"
+        "    def create_item():\n"
+        "        db.execute(input())\n",
+        encoding="utf-8",
+    )
+
+    result = ReachabilityAnalyzer().analyze_project(
+        tmp_path,
+        [{"file": "app.py", "line": 4, "rule_id": "SQLI"}],
+    )
+
+    assert result["tagged_findings"][0]["function"] == "app.init.create_item"
+    assert result["tagged_findings"][0]["reachability"] == "REACHABLE_CODE"
+
+
+@pytest.mark.parametrize(
+    "finding",
+    [
+        {"file": "service/handlers.py", "rule_id": "missing-location"},
+        {"file": "service/handlers.py", "line": 99, "rule_id": "outside-function"},
+        {"function": "does_not_exist", "rule_id": "unknown-function"},
+    ],
+)
+def test_week3_unresolved_findings_remain_unknown(tmp_path, finding):
+    (tmp_path / "app.py").write_text(
+        "def main():\n    return 1\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "service").mkdir()
+    (tmp_path / "service" / "handlers.py").write_text(
+        "def process():\n    return 1\n",
+        encoding="utf-8",
+    )
+
+    result = ReachabilityAnalyzer(["main"]).analyze_project(tmp_path, [finding])
+
+    assert result["tagged_findings"][0]["reachability"] == "UNKNOWN"

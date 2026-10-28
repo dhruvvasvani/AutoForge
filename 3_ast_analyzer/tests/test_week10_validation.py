@@ -6,6 +6,7 @@ import hmac
 import json
 import sys
 import base64
+import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -21,6 +22,7 @@ from src.deployment.webhook_app import create_webhook_app
 from src.deployment.worker import PullRequestWorker
 from src.engine.cfg_builder import CFGBuilder
 from src.integration.webhook_server import PullRequestEvent
+from src.integration.static_scanner import scan_sources
 from src.ml.cpg_builder import EDGE_TYPES, build_cpg
 from src.ml.cpg_gnn import CPGGNN
 from src.monitoring.metrics_collector import MetricsCollector
@@ -276,7 +278,37 @@ def test_webhook_rejects_unsigned_false_positive_feedback(tmp_path):
     assert response.status_code == 401
 
 
-def test_worker_scans_changed_python_and_reports_unhandled_language_files(tmp_path):
+def test_webhook_health_requires_worker_credentials_and_reports_queue(tmp_path, monkeypatch):
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    app = create_webhook_app(
+        webhook_secret="test-secret",
+        database_path=str(tmp_path / "jobs.sqlite3"),
+        repository="owner/repo",
+    )
+
+    async def get_health():
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            return await client.get(
+                "/healthz",
+                headers={"Origin": "http://127.0.0.1:5173"},
+            )
+
+    response = anyio.run(get_health)
+    assert response.status_code == 503
+    assert response.headers["access-control-allow-origin"] == "http://127.0.0.1:5173"
+    assert response.json()["detail"] == "GITHUB_TOKEN is not configured for the pull-request worker"
+
+    monkeypatch.setenv("GITHUB_TOKEN", "test-token")
+    response = anyio.run(get_health)
+    assert response.status_code == 200
+    assert response.json()["worker_credentials_configured"] is True
+    assert response.json()["queue"] == {"pending": 0, "processing": 0, "completed": 0, "failed": 0}
+
+
+def test_worker_scans_changed_python_and_reports_unhandled_language_files(tmp_path, monkeypatch):
     queue = SQLiteJobQueue(tmp_path / "jobs.sqlite3")
     worker = PullRequestWorker(
         queue,
@@ -290,15 +322,22 @@ def test_worker_scans_changed_python_and_reports_unhandled_language_files(tmp_pa
     source = "def handler(request):\n    db.execute(request.getParameter('id'))\n"
 
     async def handle_request(request: httpx.Request) -> httpx.Response:
-        assert request.url.path.endswith("/contents/app.py")
+        path = request.url.path.rsplit("/", 1)[-1]
+        assert path in {"app.py", "app.js"}
+        contents = source if path == "app.py" else "function handler() {}\n"
         return httpx.Response(
             200,
             json={
                 "type": "file",
                 "encoding": "base64",
-                "content": base64.b64encode(source.encode()).decode(),
+                "content": base64.b64encode(contents.encode()).decode(),
             },
         )
+
+    monkeypatch.setattr(
+        "src.deployment.worker.scan_sources",
+        lambda sources: ([], {"semgrep": "ok", "checkov": "skipped"}),
+    )
 
     async def run():
         async with httpx.AsyncClient(transport=httpx.MockTransport(handle_request)) as client:
@@ -312,10 +351,82 @@ def test_worker_scans_changed_python_and_reports_unhandled_language_files(tmp_pa
                 ],
             )
 
-    findings, unsupported_files = anyio.run(run)
+    findings, unsupported_files, scanner_status = anyio.run(run)
     assert findings[0]["rule_id"] == "SQLI_RAW_CONCAT"
     assert findings[0]["repository"] == "owner/repo"
     assert unsupported_files == ["app.js"]
+    assert scanner_status == {"semgrep": "ok", "checkov": "skipped"}
+
+
+def test_static_scanners_only_receive_the_isolated_changed_files(tmp_path, monkeypatch):
+    calls = []
+
+    def run(command, **kwargs):
+        calls.append((command, kwargs))
+        root = Path(command[-1] if command[0] == "semgrep" else command[2])
+        assert sorted(path.relative_to(root).as_posix() for path in root.rglob("*") if path.is_file()) == [
+            "infra/main.tf",
+            "src/app.py",
+        ]
+        if command[0] == "semgrep":
+            payload = {
+                "results": [
+                    {
+                        "check_id": "python.test",
+                        "path": str(root / "src" / "app.py"),
+                        "start": {"line": 2},
+                        "extra": {"severity": "ERROR", "message": "Unsafe call"},
+                    }
+                ]
+            }
+        else:
+            payload = [
+                {
+                    "results": {
+                        "failed_checks": [
+                            {
+                                "check_id": "CKV_TEST",
+                                "file_path": str(root / "infra" / "main.tf"),
+                                "file_line_range": [4, 4],
+                                "severity": "HIGH",
+                                "check_name": "Missing encryption",
+                            }
+                        ]
+                    }
+                }
+            ]
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=json.dumps(payload),
+            stderr="",
+        )
+
+    monkeypatch.setattr("src.integration.static_scanner.subprocess.run", run)
+    findings, statuses = scan_sources(
+        {
+            "src/app.py": "value = 1\nunsafe()\n",
+            "infra/main.tf": "resource {}\n",
+        }
+    )
+
+    assert statuses == {"semgrep": "ok", "checkov": "ok"}
+    assert {(finding["source"], finding["file"], finding["line"]) for finding in findings} == {
+        ("semgrep", "src/app.py", 2),
+        ("checkov", "infra/main.tf", 4),
+    }
+    assert len(calls) == 2
+
+
+def test_static_scanner_unavailability_is_reported(monkeypatch):
+    def missing_executable(*args, **kwargs):
+        raise FileNotFoundError("not installed")
+
+    monkeypatch.setattr("src.integration.static_scanner.subprocess.run", missing_executable)
+    findings, statuses = scan_sources({"infra/main.tf": "resource {}\n"})
+
+    assert findings == []
+    assert statuses == {"semgrep": "unavailable", "checkov": "unavailable"}
 
 
 def test_end_to_end_ast_cfg_taint_gnn_policy_and_sarif_pipeline():

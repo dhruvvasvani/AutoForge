@@ -12,5 +12,6 @@ public class ScanResultsPayload {
     private JsonNode semgrep; // raw Semgrep findings array
     private JsonNode checkov; // raw Checkov failed_checks array
     private JsonNode ast;
+    private JsonNode taggedFindings;
     private Double combinedRiskScore;
 }

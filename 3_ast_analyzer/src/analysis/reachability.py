@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 from collections import deque
 from pathlib import Path
 from typing import Any, Iterable, Mapping
@@ -12,6 +13,10 @@ from src.ir.symbol_table import SymbolTable
 
 class ReachabilityAnalyzer:
     DEFAULT_ENTRY_POINTS = ("main", "handle_login", "get_user_profile")
+    HTTP_ROUTE_DECORATORS = {
+        "api_route", "delete", "get", "options", "patch", "post", "put", "route",
+        "websocket",
+    }
 
     def __init__(self, entry_points: Iterable[str] | None = None) -> None:
         self.entry_points = tuple(entry_points or self.DEFAULT_ENTRY_POINTS)
@@ -34,6 +39,11 @@ class ReachabilityAnalyzer:
             name for name in call_graph
             if any(name == entry or name.endswith(f".{entry}") for entry in self.entry_points)
         }
+        matched_entries.update(
+            name
+            for name, symbol in symbols.functions.items()
+            if self._is_http_route(symbol.node)
+        )
         reachable = set(matched_entries)
         pending = deque(matched_entries)
         while pending:
@@ -61,11 +71,18 @@ class ReachabilityAnalyzer:
                 or tagged_finding.get("function_name")
                 or self._function_for_location(symbols, project_root, tagged_finding)
             )
-            target = self._resolve_function(call_graph, str(function)) if function else None
-            tagged_finding["function"] = function
-            tagged_finding["reachability"] = (
-                "REACHABLE_CODE" if target in reachable else "UNREACHABLE_NOISE"
+            target = (
+                self._resolve_function(call_graph, function)
+                if isinstance(function, str) and function.strip()
+                else None
             )
+            tagged_finding["function"] = function
+            if target is None:
+                tagged_finding["reachability"] = "UNKNOWN"
+            else:
+                tagged_finding["reachability"] = (
+                    "REACHABLE_CODE" if target in reachable else "UNREACHABLE_NOISE"
+                )
             tagged.append(tagged_finding)
 
         return {
@@ -78,6 +95,16 @@ class ReachabilityAnalyzer:
             "tagged_findings": tagged,
             "imports": graph["imports"],
         }
+
+    @classmethod
+    def _is_http_route(cls, function: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+        for decorator in function.decorator_list:
+            target = decorator.func if isinstance(decorator, ast.Call) else decorator
+            if isinstance(target, ast.Name) and target.id.lower() in cls.HTTP_ROUTE_DECORATORS:
+                return True
+            if isinstance(target, ast.Attribute) and target.attr.lower() in cls.HTTP_ROUTE_DECORATORS:
+                return True
+        return False
 
     @staticmethod
     def _resolve_function(call_graph: Mapping[str, Any], target: str) -> str | None:
@@ -106,4 +133,10 @@ class ReachabilityAnalyzer:
         ]
         if not matches:
             return None
-        return min(matches, key=lambda symbol: symbol.node.end_lineno or symbol.line).qualified_name
+        return min(
+            matches,
+            key=lambda symbol: (
+                (symbol.node.end_lineno or symbol.line) - symbol.line,
+                -symbol.line,
+            ),
+        ).qualified_name

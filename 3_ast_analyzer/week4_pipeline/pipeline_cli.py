@@ -31,16 +31,19 @@ def run_single_file(source_file, scan_results_path, output_path, entry_points=No
 
     clean = [f for f in result["tagged_findings"] if f["reachability"] == "REACHABLE_CODE"]
     noise = [f for f in result["tagged_findings"] if f["reachability"] == "UNREACHABLE_NOISE"]
+    unverified = [f for f in result["tagged_findings"] if f["reachability"] == "UNKNOWN"]
 
     output = {
         "summary": {
             "total_findings": len(result["tagged_findings"]),
             "reachable": len(clean),
             "noise_filtered": len(noise),
+            "unverified": len(unverified),
         },
         "reachable_functions": result["reachable_functions"],
         "clean_findings": clean,
         "filtered_noise": noise,
+        "unverified_findings": unverified,
     }
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(output, f, indent=2)
@@ -60,15 +63,18 @@ def run_cross_file(source_root, scan_results_path, output_path, entry_points, de
 
     clean = [f for f in result["tagged_findings"] if f["reachability"] == "REACHABLE_CODE"]
     noise = [f for f in result["tagged_findings"] if f["reachability"] == "UNREACHABLE_NOISE"]
+    unverified = [f for f in result["tagged_findings"] if f["reachability"] == "UNKNOWN"]
     output = {
         "summary": {
             "total_findings": len(result["tagged_findings"]),
             "reachable": len(clean),
             "noise_filtered": len(noise),
+            "unverified": len(unverified),
             "depth_limit": depth_limit,
         },
         "clean_findings": clean,
         "filtered_noise": noise,
+        "unverified_findings": unverified,
     }
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(output, f, indent=2)

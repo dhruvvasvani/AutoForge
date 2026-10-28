@@ -93,6 +93,9 @@ class SARIFReporter:
                 properties["mlConfidence"] = cls._confidence(finding["ml_confidence"], index)
             if "sink_distance" in finding:
                 properties["sinkDistance"] = cls._distance(finding["sink_distance"], index)
+            reachability = finding.get("reachability")
+            if isinstance(reachability, str) and reachability:
+                properties["reachability"] = reachability
 
             results.append(
                 {

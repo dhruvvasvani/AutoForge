@@ -46,7 +46,7 @@ class CrossFileResolver:
         self.imports.clear()
         self.call_edges.clear()
         for module, path in self.symbols.modules.items():
-            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            tree = self.symbols.module_trees[module]
             aliases = self._imports(tree, module)
             self.imports[module] = aliases
             self._calls(tree, module, path, aliases)
@@ -154,7 +154,7 @@ class CrossFileResolver:
             changed = False
             for name, symbol in self.symbols.functions.items():
                 source = ast.get_source_segment(
-                    symbol.file_path.read_text(encoding="utf-8"), symbol.node
+                    self.symbols.module_sources[symbol.module], symbol.node
                 )
                 if not source:
                     continue

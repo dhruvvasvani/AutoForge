@@ -5,6 +5,7 @@ import com.autoforge.dto.AdminUserResponse;
 import com.autoforge.dto.PlanRequestResponse;
 import com.autoforge.entity.Plan;
 import com.autoforge.entity.PlanRequest;
+import com.autoforge.entity.Role;
 import com.autoforge.entity.User;
 import com.autoforge.entity.UserStatus;
 import com.autoforge.exception.ApiException;
@@ -36,6 +37,14 @@ public class AdminService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "User not found"));
         user.setStatus(status);
+        user.setUpdatedAt(Instant.now());
+        return toAdminUserResponse(userRepository.save(user));
+    }
+
+    public AdminUserResponse setUserRole(Long userId, Role role) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "User not found"));
+        user.setRole(role);
         user.setUpdatedAt(Instant.now());
         return toAdminUserResponse(userRepository.save(user));
     }

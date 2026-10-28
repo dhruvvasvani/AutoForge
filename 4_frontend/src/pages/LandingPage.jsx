@@ -79,9 +79,9 @@ function LandingPage() {
             <Link className="landing-button" to="/register">
               Start securing for free <span aria-hidden="true">↗</span>
             </Link>
-            <a className="landing-secondary-link" href="#how-it-works">
-              See how it works <span aria-hidden="true">↓</span>
-            </a>
+            <Link className="landing-secondary-link" to="/analyze">
+              Try local AST scan <span aria-hidden="true">↗</span>
+            </Link>
           </div>
           <div className="landing-hero__trust">
             <span aria-hidden="true">✳</span> Human-reviewed fixes. Your code stays yours.
@@ -95,7 +95,7 @@ function LandingPage() {
               <i />
               <i />
             </div>
-            <span>autoforge / payments-api</span>
+            <span>ILLUSTRATIVE PREVIEW · NOT A LIVE SCAN</span>
             <span className="landing-preview__live">
               <span className="landing-status-dot" /> SCAN COMPLETE
             </span>
@@ -151,12 +151,12 @@ function LandingPage() {
               </div>
               <div className="landing-scan-summary__footer">
                 <span className="landing-status-dot" />
-                Last scan completed just now
+                Sample scan snapshot · demo data
               </div>
             </div>
           </div>
           <div className="landing-preview__bottom">
-            <span><span className="landing-status-dot" /> Pipeline operational</span>
+            <span><span className="landing-status-dot" /> Workflow preview</span>
             <span>AST analysis <b>✓</b></span>
             <span>Risk scoring <b>✓</b></span>
             <span>AI review <b>✓</b></span>

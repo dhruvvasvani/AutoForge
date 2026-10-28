@@ -1,0 +1,171 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: autoforge
+      POSTGRES_USER: autoforge
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U autoforge -d autoforge"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    volumes:
+      - ./3_ast_analyzer/deployment/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    depends_on:
+      analyzer-api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./1_backend
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/autoforge
+      SPRING_DATASOURCE_USERNAME: autoforge
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      REDIS_HOST: redis
+      AUTOFORGE_INTERNAL_TOKEN: ${AUTOFORGE_INTERNAL_TOKEN:?Set AUTOFORGE_INTERNAL_TOKEN in .env}
+      AUTOFORGE_JWT_SECRET: ${AUTOFORGE_JWT_SECRET:?Set AUTOFORGE_JWT_SECRET in .env}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8089/actuator/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 45s
+    restart: unless-stopped
+
+  analyzer-api:
+    build:
+      context: ./3_ast_analyzer
+    environment:
+      AST_SCAN_HISTORY_DB: /data/scan_history.sqlite3
+      CPG_GNN_CHECKPOINT: ${CPG_GNN_CHECKPOINT:-}
+      CPG_GNN_MODEL_NAME: ${CPG_GNN_MODEL_NAME:-/models/codebert-base}
+    volumes:
+      - analyzer-data:/data
+      - scan-workspace:/workspace:ro
+      - ./3_ast_analyzer/models:/models:ro
+      - ./3_ast_analyzer/src/ml:/models/checkpoints:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/readyz', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 60s
+      retries: 3
+    restart: unless-stopped
+
+  pipeline-worker:
+    build:
+      context: .
+      dockerfile: 2_pipeline/Dockerfile
+    command: ["python", "queue/worker.py"]
+    environment:
+      AUTOFORGE_REDIS_HOST: redis
+      AUTOFORGE_REDIS_PORT: "6379"
+      AUTOFORGE_AST_SERVICE_URL: http://analyzer-api:8090
+      AUTOFORGE_BACKEND_URL: http://backend:8089
+      AUTOFORGE_INTERNAL_SCAN_TOKEN: ${AUTOFORGE_INTERNAL_TOKEN:?Set AUTOFORGE_INTERNAL_TOKEN in .env}
+      AUTOFORGE_AI_FIX_ENABLED: "false"
+      AUTOFORGE_WORKSPACE_DIR: /workspace
+    volumes:
+      - scan-workspace:/workspace
+    depends_on:
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+      analyzer-api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  webhook:
+    build:
+      context: .
+      dockerfile: 3_ast_analyzer/src/deployment/Dockerfile
+    profiles: ["github"]
+    environment:
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET:-}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      GITHUB_REPOSITORY: ${GITHUB_REPOSITORY:-}
+      WEBHOOK_CORS_ORIGINS: ${WEBHOOK_CORS_ORIGINS:-}
+      JOB_DB_PATH: /data/jobs.sqlite3
+      FEEDBACK_PATH: /data/false_positive_feedback.jsonl
+    ports:
+      - "127.0.0.1:${AUTOFORGE_WEBHOOK_PORT:-8091}:8000"
+    volumes:
+      - ast-worker-data:/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  ast-worker:
+    image: autoforge-main-github-webhook
+    build:
+      context: .
+      dockerfile: 3_ast_analyzer/src/deployment/Dockerfile
+    profiles: ["github"]
+    command: ["python", "-m", "src.deployment.worker"]
+    environment:
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      GITHUB_REPOSITORY: ${GITHUB_REPOSITORY:-}
+      JOB_DB_PATH: /data/jobs.sqlite3
+      FEEDBACK_PATH: /data/false_positive_feedback.jsonl
+      METRICS_PORT: "8001"
+    volumes:
+      - ast-worker-data:/data
+    depends_on:
+      webhook:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./4_frontend
+    ports:
+      - "${AUTOFORGE_HTTP_PORT:-8080}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+      analyzer-api:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  redis-data:
+  prometheus-data:
+  analyzer-data:
+  ast-worker-data:
+  scan-workspace:

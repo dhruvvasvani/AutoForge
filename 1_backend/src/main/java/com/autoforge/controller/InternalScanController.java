@@ -4,6 +4,8 @@ package com.autoforge.controller;
 import com.autoforge.dto.CreateScanRequest;
 import com.autoforge.dto.ScanResponse;
 import com.autoforge.dto.ScanResultsPayload;
+import com.autoforge.dto.ScanProgressRequest;
+import com.autoforge.dto.ScanProgressResponse;
 import com.autoforge.entity.Scan;
 import com.autoforge.service.ScanService;
 import jakarta.validation.Valid;
@@ -36,7 +38,16 @@ public class InternalScanController {
                                                        @RequestBody ScanResultsPayload payload) {
         Scan scan = scanService.persistScanResults(
                 id, payload.getSemgrep(), payload.getCheckov(), payload.getAst(),
+                payload.getTaggedFindings(),
                 payload.getCombinedRiskScore());
         return ResponseEntity.ok(new ScanResponse(scan.getId(), scan.getStatus().name(), scan.getCommitSha()));
+    }
+
+    @PostMapping("/{id}/progress")
+    public ResponseEntity<ScanProgressResponse> progress(
+            @PathVariable Long id,
+            @Valid @RequestBody ScanProgressRequest request
+    ) {
+        return ResponseEntity.ok(scanService.updateScanProgress(id, request));
     }
 }
