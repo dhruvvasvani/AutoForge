@@ -65,4 +65,5 @@ public interface ScanRepository extends JpaRepository<Scan, Long> {
                        @Param("completedAt") Instant completedAt);
 
     Optional<Scan> findByIdempotencyKey(String idempotencyKey);
+    Optional<Scan> findFirstByRepositoryIdAndCommitSha(Long repositoryId, String commitSha);
 }

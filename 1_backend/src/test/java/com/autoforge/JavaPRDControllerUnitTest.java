@@ -164,7 +164,7 @@ public class JavaPRDControllerUnitTest {
         assertNotNull(message);
 
         assertEquals("505", message.get("job_id"));
-        assertEquals("606", message.get("project_id"));
+        assertEquals(606L, message.get("project_id"));
         assertEquals("https://github.com/autoforge/repo", message.get("repo_url"));
         assertEquals("abcdef123456", message.get("commit_sha"));
         assertEquals("main", message.get("branch"));

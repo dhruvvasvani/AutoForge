@@ -13,25 +13,31 @@ import java.io.IOException;
 
 @Component
 public class InternalApiKeyFilter extends OncePerRequestFilter {
-    private static final String API_KEY_HEADER = "X-Internal-Api-Key";
+    public static final String PRIMARY_API_KEY_HEADER = "X-AutoForge-Internal-Token";
+    public static final String LEGACY_API_KEY_HEADER = "X-Internal-Api-Key";
 
     private final String expectedApiKey;
 
-    public InternalApiKeyFilter(@Value("${internal.api.key}") String expectedApiKey) {
+    public InternalApiKeyFilter(
+            @Value("${autoforge.internal-token:${internal.api.key:}}") String expectedApiKey) {
         this.expectedApiKey = expectedApiKey;
     }
 
     @Override
     protected boolean shouldNotFilter(@NonNull HttpServletRequest request) {
-        return !request.getRequestURI().startsWith("/api/internal");
+        String requestUri = request.getRequestURI();
+        return !requestUri.equals("/api/internal") && !requestUri.startsWith("/api/internal/");
     }
 
     @Override
     protected void doFilterInternal(@NonNull HttpServletRequest request, @NonNull HttpServletResponse response,
                                     @NonNull FilterChain filterChain) throws ServletException, IOException {
-        String apiKey = request.getHeader(API_KEY_HEADER);
+        String apiKey = request.getHeader(PRIMARY_API_KEY_HEADER);
+        if (apiKey == null || apiKey.isBlank()) {
+            apiKey = request.getHeader(LEGACY_API_KEY_HEADER);
+        }
 
-        if (apiKey == null || expectedApiKey == null || !expectedApiKey.equals(apiKey)) {
+        if (apiKey == null || expectedApiKey.isBlank() || !expectedApiKey.equals(apiKey)) {
             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
             response.setContentType("application/json");
             response.getWriter().write("{\"status\":401,\"error\":\"Unauthorized\",\"message\":\"Invalid or missing internal API key\"}");

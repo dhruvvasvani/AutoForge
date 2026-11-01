@@ -39,8 +39,18 @@ public class ScanService {
 
     public Scan createScanJobFromPush(String repoFullName, String commitSha, String eventType,
                                       String branch, List<String> changedFiles) {
+        return createOrGetScanJobFromPush(repoFullName, commitSha, eventType, branch, changedFiles).scan();
+    }
+
+    public ScanCreationResult createOrGetScanJobFromPush(String repoFullName, String commitSha, String eventType,
+                                                          String branch, List<String> changedFiles) {
         Repository repository = repositoryRepository.findByGithubRepoFullName(repoFullName)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Repository is not connected to AutoForge: " + repoFullName));
+
+        var existingScan = scanRepository.findFirstByRepositoryIdAndCommitSha(repository.getId(), commitSha);
+        if (existingScan.isPresent()) {
+            return new ScanCreationResult(existingScan.get(), false);
+        }
 
         WebhookEvent event = new WebhookEvent();
         event.setRepository(repository);
@@ -64,8 +74,10 @@ public class ScanService {
 
         queueService.publishScanJob(saved.getId(), repository.getId(), repoUrl, commitSha,
                 saved.getBranch(), changedFiles);
-        return saved;
+        return new ScanCreationResult(saved, true);
     }
+
+    public record ScanCreationResult(Scan scan, boolean created) {}
 
     public ScanJobResponse triggerScan(ScanTriggerRequest request) {
         if (request.getIdempotencyKey() != null && !request.getIdempotencyKey().isBlank()) {
@@ -148,6 +160,14 @@ public class ScanService {
         Scan scan = scanRepository.findById(scanId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Scan not found: " + scanId));
 
+        if ("FAILED".equalsIgnoreCase(payload.getStatus())) {
+            scan.setStatus(ScanStatus.FAILED);
+            scan.setErrorMessage(payload.getError() == null ? "Pipeline worker reported scan failure."
+                    : payload.getError().substring(0, Math.min(payload.getError().length(), 1024)));
+            scan.setCompletedAt(Instant.now());
+            return scanRepository.save(scan);
+        }
+
         String defaultPriority = payload.getPriority() != null ? payload.getPriority() : payload.getMlPriority();
         Boolean defaultReachable = payload.getIsReachable();
         if (defaultReachable == null && payload.getReachabilityTag() != null) {
@@ -157,16 +177,23 @@ public class ScanService {
         if (payload.getSemgrep() != null) {
             final Boolean reach = defaultReachable;
             final String prio = defaultPriority;
-            payload.getSemgrep().forEach(f -> vulnerabilityRepository.save(toVulnerability(scan, f, "SEMGREP", reach, prio)));
+            payload.getSemgrep().forEach(f -> {
+                vulnerabilityRepository.save(toVulnerability(scan, f, "SEMGREP", reach, prio));
+                findingRepository.save(toFinding(scan, f));
+            });
         }
         if (payload.getCheckov() != null) {
             final Boolean reach = defaultReachable;
             final String prio = defaultPriority;
-            payload.getCheckov().forEach(f -> vulnerabilityRepository.save(toVulnerability(scan, f, "CHECKOV", reach, prio)));
+            payload.getCheckov().forEach(f -> {
+                vulnerabilityRepository.save(toVulnerability(scan, f, "CHECKOV", reach, prio));
+                findingRepository.save(toFinding(scan, f));
+            });
         }
 
         scan.setStatus(ScanStatus.COMPLETED);
         scan.setCompletedAt(Instant.now());
+        scan.setProgress(100);
         return scanRepository.save(scan);
     }
 
@@ -465,10 +492,12 @@ public class ScanService {
         Boolean reachable = defaultReachable;
         if (finding.has("is_reachable")) {
             reachable = finding.get("is_reachable").asBoolean();
+        } else if (finding.path("extra").has("reachable")) {
+            reachable = finding.path("extra").get("reachable").asBoolean();
         } else if (finding.path("extra").has("is_reachable")) {
             reachable = finding.path("extra").get("is_reachable").asBoolean();
         } else if (finding.path("extra").has("reachability")) {
-            reachable = !"UNREACHABLE".equalsIgnoreCase(finding.path("extra").get("reachability").asText());
+            reachable = isReachableStatus(finding.path("extra").get("reachability").asText());
         }
         v.setIsReachable(reachable != null ? reachable : true);
 
@@ -483,6 +512,32 @@ public class ScanService {
         v.setPriority(priority != null ? priority : "P2");
 
         return v;
+    }
+
+    private Finding toFinding(Scan scan, JsonNode finding) {
+        JsonNode extra = finding.path("extra");
+        Finding savedFinding = new Finding();
+        savedFinding.setScan(scan);
+        savedFinding.setRuleId(finding.path("check_id").asText("GENERIC-001"));
+        savedFinding.setTitle(extra.path("message").asText(finding.path("check_name").asText(
+                finding.path("check_id").asText("Security Finding"))));
+        savedFinding.setFilePath(finding.path("path").asText(finding.path("file_abs_path").asText("unknown")));
+        savedFinding.setLineNumber(finding.path("start").path("line").asInt(0));
+        savedFinding.setSeverity(extra.path("severity").asText("MEDIUM").toUpperCase());
+        savedFinding.setCodeSnippet(extra.path("lines").asText(null));
+        if (finding.has("is_reachable")) {
+            savedFinding.setIsReachable(finding.path("is_reachable").asBoolean());
+        } else if (extra.has("reachable")) {
+            savedFinding.setIsReachable(extra.path("reachable").asBoolean());
+        } else if (extra.has("is_reachable")) {
+            savedFinding.setIsReachable(extra.path("is_reachable").asBoolean());
+        } else if (extra.has("reachability")) {
+            savedFinding.setIsReachable(isReachableStatus(extra.path("reachability").asText()));
+            savedFinding.setReachabilityStatus(extra.path("reachability").asText());
+        }
+        String priority = finding.path("priority").asText(extra.path("priority").asText(null));
+        savedFinding.setPriority(priority);
+        return savedFinding;
     }
 
     private ScanJobResponse toJobResponse(Scan scan) {

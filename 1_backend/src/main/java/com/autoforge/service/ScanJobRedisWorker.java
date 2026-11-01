@@ -3,6 +3,7 @@ package com.autoforge.service;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -11,6 +12,7 @@ import java.util.Map;
 @Service
 @Slf4j
 @RequiredArgsConstructor
+@ConditionalOnProperty(name = "autoforge.java-scan-worker.enabled", havingValue = "true", matchIfMissing = false)
 public class ScanJobRedisWorker {
     private final ScanExecutionService scanExecutionService;
     private final ScanService scanService;

@@ -9,6 +9,7 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 target/
+.env
 node_modules/
 .ipynb_checkpoints/
 combined_scan_results.json

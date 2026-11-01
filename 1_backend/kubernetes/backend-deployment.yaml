@@ -20,7 +20,12 @@ spec:
           image: autoforge/backend:latest
           ports:
             - containerPort: 8080
+              name: http
           env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: "prod"
+            - name: SERVER_PORT
+              value: "8080"
             - name: DB_HOST
               value: "postgres.autoforge.svc.cluster.local"
             - name: DB_PORT
@@ -37,6 +42,10 @@ spec:
                 secretKeyRef:
                   name: autoforge-secrets
                   key: db-password
+            - name: REDIS_HOST
+              value: "redis.autoforge.svc.cluster.local"
+            - name: REDIS_PORT
+              value: "6379"
             - name: SPRING_DATA_REDIS_HOST
               value: "redis.autoforge.svc.cluster.local"
             - name: SPRING_DATA_REDIS_PORT
@@ -46,6 +55,16 @@ spec:
                 secretKeyRef:
                   name: autoforge-secrets
                   key: jwt-secret
+            - name: AUTOFORGE_INTERNAL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: autoforge-secrets
+                  key: internal-token
+            - name: INTERNAL_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: autoforge-secrets
+                  key: internal-token
           resources:
             requests:
               cpu: "500m"

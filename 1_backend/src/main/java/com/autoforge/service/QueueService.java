@@ -76,7 +76,7 @@ public class QueueService {
                                List<String> changedFiles) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("job_id", String.valueOf(scanId));
-        payload.put("project_id", String.valueOf(projectId));
+        payload.put("project_id", projectId);
         payload.put("repo_url", repoUrl);
         payload.put("commit_sha", commitSha);
         payload.put("branch", branch != null ? branch : "main");

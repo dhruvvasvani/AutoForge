@@ -80,13 +80,14 @@ public class GithubWebhookController {
         }
 
         List<String> changedFiles = changedFiles(payload, pullRequestEvent);
-        var scan = scanService.createScanJobFromPush(repoFullName, commitSha, eventType, branch, changedFiles);
-        response.put("status", "accepted");
-        response.put("message", "Scan job queued successfully");
+        var result = scanService.createOrGetScanJobFromPush(repoFullName, commitSha, eventType, branch, changedFiles);
+        var scan = result.scan();
+        response.put("status", result.created() ? "accepted" : "existing");
+        response.put("message", result.created() ? "Scan job queued successfully" : "Scan already exists for this commit");
         response.put("scan_id", scan.getId());
         response.put("branch", scan.getBranch());
         response.put("changed_files", changedFiles);
-        return ResponseEntity.accepted().body(response);
+        return ResponseEntity.status(result.created() ? HttpStatus.ACCEPTED : HttpStatus.OK).body(response);
     }
 
     @PostMapping("/gitlab")
@@ -116,11 +117,13 @@ public class GithubWebhookController {
             return ResponseEntity.badRequest().body(response);
         }
 
-        var scan = scanService.createScanJobFromPush(repoFullName, commitSha, eventType != null ? eventType : "push");
-        response.put("status", "accepted");
-        response.put("message", "GitLab scan job queued successfully");
+        var result = scanService.createOrGetScanJobFromPush(
+                repoFullName, commitSha, eventType != null ? eventType : "push", "main", List.of());
+        var scan = result.scan();
+        response.put("status", result.created() ? "accepted" : "existing");
+        response.put("message", result.created() ? "GitLab scan job queued successfully" : "Scan already exists for this commit");
         response.put("scan_id", scan.getId());
-        return ResponseEntity.accepted().body(response);
+        return ResponseEntity.status(result.created() ? HttpStatus.ACCEPTED : HttpStatus.OK).body(response);
     }
 
     private boolean isValidSignature(String payload, String signatureHeader) throws Exception {

@@ -7,6 +7,8 @@ import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
+import org.springframework.data.redis.listener.ChannelTopic;
+import org.springframework.data.redis.listener.RedisMessageListenerContainer;
 
 @Configuration
 public class RedisConfig {
@@ -21,5 +23,14 @@ public class RedisConfig {
         template.setHashValueSerializer(new GenericJackson2JsonRedisSerializer(objectMapper));
         template.afterPropertiesSet();
         return template;
+    }
+
+    @Bean
+    public RedisMessageListenerContainer redisMessageListenerContainer(
+            RedisConnectionFactory connectionFactory, ScanWebSocketHandler scanWebSocketHandler) {
+        RedisMessageListenerContainer container = new RedisMessageListenerContainer();
+        container.setConnectionFactory(connectionFactory);
+        container.addMessageListener(scanWebSocketHandler, new ChannelTopic("scan_events"));
+        return container;
     }
 }

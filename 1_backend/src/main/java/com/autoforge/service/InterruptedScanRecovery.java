@@ -5,6 +5,7 @@ import com.autoforge.repository.ScanRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -15,6 +16,7 @@ import java.util.List;
 @Component
 @RequiredArgsConstructor
 @Slf4j
+@ConditionalOnProperty(name = "autoforge.java-scan-worker.enabled", havingValue = "true", matchIfMissing = false)
 public class InterruptedScanRecovery {
     private final ScanRepository scanRepository;
     private final ScanExecutionService scanExecutionService;

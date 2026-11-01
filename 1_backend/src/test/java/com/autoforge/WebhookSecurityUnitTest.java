@@ -71,9 +71,9 @@ public class WebhookSecurityUnitTest {
         scan.setBranch("feature/security");
         scan.setStatus(ScanStatus.QUEUED);
         List<String> changedFiles = List.of("src/New.java", "src/Changed.java", "src/Old.java");
-        when(scanService.createScanJobFromPush("octocat/Hello-World",
+        when(scanService.createOrGetScanJobFromPush("octocat/Hello-World",
                 "6dcb09b5b57875f334f61aebed695e2e4193db5e", "push", "feature/security", changedFiles))
-                .thenReturn(scan);
+                .thenReturn(new ScanService.ScanCreationResult(scan, true));
 
         ResponseEntity<Map<String, Object>> response = webhookController.handlePush(payload, signature, "push");
         assertEquals(HttpStatus.ACCEPTED, response.getStatusCode());
@@ -81,8 +81,32 @@ public class WebhookSecurityUnitTest {
         assertEquals(10L, response.getBody().get("scan_id"));
         assertEquals("feature/security", response.getBody().get("branch"));
         assertEquals(changedFiles, response.getBody().get("changed_files"));
-        verify(scanService).createScanJobFromPush("octocat/Hello-World",
+        verify(scanService).createOrGetScanJobFromPush("octocat/Hello-World",
                 "6dcb09b5b57875f334f61aebed695e2e4193db5e", "push", "feature/security", changedFiles);
+    }
+
+    @Test
+    void duplicateGithubPushReturnsExistingScanWithOk() throws Exception {
+        String payload = """
+                {
+                  "repository": { "full_name": "octocat/Hello-World" },
+                  "after": "6dcb09b5b57875f334f61aebed695e2e4193db5e",
+                  "ref": "refs/heads/main",
+                  "commits": []
+                }
+                """;
+        String signature = calculateHmac(payload, SECRET);
+        Scan existing = new Scan();
+        existing.setId(11L);
+        existing.setStatus(ScanStatus.COMPLETED);
+        when(scanService.createOrGetScanJobFromPush("octocat/Hello-World",
+                "6dcb09b5b57875f334f61aebed695e2e4193db5e", "push", "main", List.of()))
+                .thenReturn(new ScanService.ScanCreationResult(existing, false));
+
+        ResponseEntity<Map<String, Object>> response = webhookController.handlePush(payload, signature, "push");
+
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertEquals(11L, response.getBody().get("scan_id"));
     }
 
     @Test
@@ -107,8 +131,9 @@ public class WebhookSecurityUnitTest {
 
         Scan scan = new Scan();
         scan.setId(22L);
-        when(scanService.createScanJobFromPush("gitlab-org/gitlab", "da1560886d4f094c3e6c9ef40349f7d38b5d27d7", "Push Hook"))
-                .thenReturn(scan);
+        when(scanService.createOrGetScanJobFromPush(
+                "gitlab-org/gitlab", "da1560886d4f094c3e6c9ef40349f7d38b5d27d7", "Push Hook", "main", List.of()))
+                .thenReturn(new ScanService.ScanCreationResult(scan, true));
 
         ResponseEntity<Map<String, Object>> response = webhookController.handleGitlab(payload, "test-gitlab-secret", "Push Hook");
         assertEquals(HttpStatus.ACCEPTED, response.getStatusCode());

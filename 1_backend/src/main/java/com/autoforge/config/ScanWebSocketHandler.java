@@ -2,6 +2,8 @@ package com.autoforge.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.connection.Message;
+import org.springframework.data.redis.connection.MessageListener;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
@@ -16,9 +18,28 @@ import java.util.concurrent.CopyOnWriteArrayList;
 
 @Component
 @Slf4j
-public class ScanWebSocketHandler extends TextWebSocketHandler {
+public class ScanWebSocketHandler extends TextWebSocketHandler implements MessageListener {
     private final Map<Long, List<WebSocketSession>> sessionsByJobId = new ConcurrentHashMap<>();
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper;
+
+    public ScanWebSocketHandler(ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
+    }
+
+    @Override
+    public void onMessage(Message message, byte[] pattern) {
+        try {
+            var event = objectMapper.readTree(message.getBody());
+            var scanIdNode = event.path("scan_id");
+            if (!scanIdNode.canConvertToLong()) {
+                log.warn("Ignoring Redis scan event without scan_id.");
+                return;
+            }
+            broadcast(scanIdNode.asLong(), event);
+        } catch (Exception ex) {
+            log.error("Unable to process Redis scan event: {}", ex.getMessage(), ex);
+        }
+    }
 
     @Override
     public void afterConnectionEstablished(WebSocketSession session) {

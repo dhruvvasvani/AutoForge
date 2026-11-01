@@ -2,7 +2,7 @@
 worker.py - AutoForge scan worker (Pipeline module)
 
 Per job:
-  Redis list `scan_jobs`
+  Redis list `autoforge:scan_jobs`
     -> fetch the exact commit from GitHub (shallow, falls back to full clone)
     -> Semgrep + Checkov
     -> AST/ML service  (POST /analyze, POST /score)        [Dhruv]
@@ -30,6 +30,7 @@ import tempfile
 import time
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlparse
 
 import redis
 import requests
@@ -46,18 +47,23 @@ def _env(name, default):
     return os.environ.get(f"AUTOFORGE_{name}", default)
 
 
-QUEUE_NAME = _env("QUEUE", "scan_jobs")
-RESULTS_QUEUE = _env("RESULTS_QUEUE", "scan_results")
-EVENTS_CHANNEL = _env("EVENTS_CHANNEL", "scan_events")
+QUEUE_NAME = os.environ.get("QUEUE_NAME") or _env("QUEUE", "autoforge:scan_jobs")
+RESULTS_QUEUE = os.environ.get("RESULTS_QUEUE") or _env("RESULTS_QUEUE", "scan_results")
+EVENTS_CHANNEL = os.environ.get("EVENTS_CHANNEL") or _env("EVENTS_CHANNEL", "scan_events")
 
-REDIS_HOST = _env("REDIS_HOST", "localhost")
-REDIS_PORT = int(_env("REDIS_PORT", "6379"))
+REDIS_HOST = os.environ.get("REDIS_HOST") or _env("REDIS_HOST", "localhost")
+REDIS_PORT = int(os.environ.get("REDIS_PORT") or _env("REDIS_PORT", "6379"))
 
 AST_SERVICE_URL = _env("AST_SERVICE_URL", "http://localhost:8001").rstrip("/")  # "" = disabled
-BACKEND_URL = _env("BACKEND_URL", "http://localhost:8080").rstrip("/")
+BACKEND_URL = (os.environ.get("BACKEND_API_URL") or os.environ.get("BACKEND_URL") or _env("BACKEND_URL", "http://localhost:8080")).rstrip("/")
 # Backend InternalApiTokenFilter: header X-AutoForge-Internal-Token, must equal backend `autoforge.internal-token`.
 # Same env name as 2_pipeline/client.py (AUTOFORGE_INTERNAL_SCAN_TOKEN); AUTOFORGE_INTERNAL_SECRET kept as alias.
-INTERNAL_TOKEN = os.environ.get("AUTOFORGE_INTERNAL_SCAN_TOKEN") or _env("INTERNAL_SECRET", "")
+INTERNAL_TOKEN = (
+    os.environ.get("AUTOFORGE_INTERNAL_TOKEN")
+    or os.environ.get("AUTOFORGE_INTERNAL_SCAN_TOKEN")
+    or os.environ.get("INTERNAL_API_KEY")
+    or _env("INTERNAL_SECRET", "")
+)
 AI_FIX_URL = _env("AI_FIX_URL", "http://localhost:5050").rstrip("/")
 AI_FIX_ENABLED = _env("AI_FIX_ENABLED", "true").lower() == "true"
 MAX_FIXES_PER_SCAN = int(_env("MAX_FIXES", "3"))
@@ -192,9 +198,15 @@ class ScanWorker:
         if not isinstance(job, dict):
             raise ValueError("job is not a JSON object")
 
-        repo = job.get("repoFullName") or job.get("repository_id")
-        commit = job.get("commitSha") or job.get("commit_sha") or job.get("commit_hash")
         repo_url = job.get("repo_url")
+        repo_from_url = urlparse(repo_url).path.strip("/") if repo_url else None
+        if repo_from_url and repo_from_url.endswith(".git"):
+            repo_from_url = repo_from_url[:-4]
+        repo = job.get("repoFullName") or (
+            repo_from_url if repo_from_url and REPO_NAME_RE.match(repo_from_url)
+            else job.get("repository_id")
+        )
+        commit = job.get("commitSha") or job.get("commit_sha") or job.get("commit_hash")
         if not repo_url and isinstance(repo, str) and REPO_NAME_RE.match(repo):
             repo_url = f"https://github.com/{repo}.git"
 
@@ -342,6 +354,7 @@ class ScanWorker:
                 "error": str(e)[:500],
                 "timestamp": datetime.now().isoformat(),
             })
+            self.report_failure_to_backend(scan_id, str(e))
             self.emit(scan_id, "FAILED", "ERROR", str(e)[:200])
             return None
         finally:
@@ -598,6 +611,22 @@ class ScanWorker:
             return True
         except Exception as e:
             logger.warning("Backend POST failed (%s) - result is still in Redis", e)
+            return False
+
+    def report_failure_to_backend(self, scan_id, error):
+        if not str(scan_id).isdigit() or not BACKEND_URL or not INTERNAL_TOKEN:
+            return False
+        try:
+            response = requests.post(
+                f"{BACKEND_URL}/api/internal/scans/{scan_id}/results",
+                json={"status": "FAILED", "error": error[:500]},
+                headers={"X-AutoForge-Internal-Token": INTERNAL_TOKEN},
+                timeout=15,
+            )
+            response.raise_for_status()
+            return True
+        except requests.RequestException as error:
+            logger.warning("Could not report failed scan %s to backend: %s", scan_id, error)
             return False
 
     # ---------------------------------------------------------- consumer

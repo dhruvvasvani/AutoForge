@@ -46,6 +46,7 @@ services:
       context: ./1_backend
     environment:
       SPRING_PROFILES_ACTIVE: prod
+      SERVER_PORT: "8089"
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/autoforge
       SPRING_DATASOURCE_USERNAME: autoforge
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}

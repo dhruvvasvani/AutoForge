@@ -38,7 +38,7 @@ class InternalApiKeyFilterTest {
     @Test
     void internalPathWithWrongKeyReturns401() throws ServletException, IOException {
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/internal/scans");
-        request.addHeader("X-Internal-Api-Key", "wrong-secret");
+        request.addHeader("X-AutoForge-Internal-Token", "wrong-secret");
         MockHttpServletResponse response = new MockHttpServletResponse();
         FilterChain filterChain = new MockFilterChain();
 
@@ -49,11 +49,34 @@ class InternalApiKeyFilterTest {
     @Test
     void internalPathWithValidKeyPasses() throws ServletException, IOException {
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/internal/scans");
+        request.addHeader("X-AutoForge-Internal-Token", "test-secret-key");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        FilterChain filterChain = new MockFilterChain();
+
+        filter.doFilter(request, response, filterChain);
+        assertEquals(200, response.getStatus());
+    }
+
+    @Test
+    void internalPathWithLegacyKeyPasses() throws ServletException, IOException {
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/internal/scans");
         request.addHeader("X-Internal-Api-Key", "test-secret-key");
         MockHttpServletResponse response = new MockHttpServletResponse();
         FilterChain filterChain = new MockFilterChain();
 
         filter.doFilter(request, response, filterChain);
         assertEquals(200, response.getStatus());
+    }
+
+    @Test
+    void internalPathWhenExpectedKeyIsBlankReturns401() throws ServletException, IOException {
+        InternalApiKeyFilter emptyFilter = new InternalApiKeyFilter("");
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/internal/scans");
+        request.addHeader("X-AutoForge-Internal-Token", "some-token");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        FilterChain filterChain = new MockFilterChain();
+
+        emptyFilter.doFilter(request, response, filterChain);
+        assertEquals(401, response.getStatus());
     }
 }

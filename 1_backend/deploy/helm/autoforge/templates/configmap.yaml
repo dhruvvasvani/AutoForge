@@ -5,8 +5,14 @@ metadata:
   labels:
     {{- include "autoforge.labels" . | nindent 4 }}
 data:
+  SPRING_PROFILES_ACTIVE: "prod"
+  SERVER_PORT: "8080"
   DB_HOST: "{{ .Values.postgresql.host | default "postgres.autoforge.svc.cluster.local" }}"
   DB_PORT: "{{ .Values.postgresql.port | default "5432" }}"
   DB_NAME: "{{ .Values.postgresql.database | default "autoforge" }}"
   REDIS_HOST: "{{ .Values.redis.host | default "redis.autoforge.svc.cluster.local" }}"
   REDIS_PORT: "{{ .Values.redis.port | default "6379" }}"
+  SPRING_DATA_REDIS_HOST: "{{ .Values.redis.host | default "redis.autoforge.svc.cluster.local" }}"
+  SPRING_DATA_REDIS_PORT: "{{ .Values.redis.port | default "6379" }}"
+  QUEUE_NAME: "autoforge:scan_jobs"
+  AUTOFORGE_QUEUE: "autoforge:scan_jobs"
