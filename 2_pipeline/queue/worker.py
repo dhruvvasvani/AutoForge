@@ -66,6 +66,7 @@ INTERNAL_TOKEN = (
 )
 AI_FIX_URL = _env("AI_FIX_URL", "http://localhost:5050").rstrip("/")
 AI_FIX_ENABLED = _env("AI_FIX_ENABLED", "true").lower() == "true"
+PROGRESS_POST_ENABLED = _env("PROGRESS_POST", "false").lower() == "true"
 MAX_FIXES_PER_SCAN = int(_env("MAX_FIXES", "3"))
 
 CLONE_TIMEOUT = int(_env("CLONE_TIMEOUT", "300"))
@@ -171,7 +172,7 @@ class ScanWorker:
             self.redis_client.publish(EVENTS_CHANNEL, json.dumps(event))
         except Exception as e:
             logger.warning("Could not publish scan progress event: %s", e)
-        if str(scan_id).isdigit() and BACKEND_URL and INTERNAL_TOKEN:
+        if PROGRESS_POST_ENABLED and str(scan_id).isdigit() and BACKEND_URL and INTERNAL_TOKEN:
             try:
                 response = requests.post(
                     f"{BACKEND_URL}/api/internal/scans/{scan_id}/progress",
