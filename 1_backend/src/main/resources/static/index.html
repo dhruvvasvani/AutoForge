@@ -1,0 +1,855 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AutoForge — AI-Powered DevSecOps & Security Analysis Platform</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-dark: #0a0e17;
+      --bg-card: #111827;
+      --bg-surface: #1f2937;
+      --border: #374151;
+      --border-focus: #6366f1;
+      --primary: #6366f1;
+      --primary-hover: #4f46e5;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --info: #06b6d4;
+      --text: #f9fafb;
+      --text-muted: #9ca3af;
+      --font-main: 'Plus Jakarta Sans', sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: var(--bg-dark);
+      color: var(--text);
+      font-family: var(--font-main);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      background: rgba(17, 24, 39, 0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      padding: 1rem 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      font-weight: 800;
+      font-size: 1.25rem;
+      letter-spacing: -0.025em;
+    }
+    .logo-badge {
+      background: linear-gradient(135deg, var(--primary), #a855f7);
+      color: white;
+      padding: 0.25rem 0.6rem;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      font-weight: 700;
+    }
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      background: rgba(16, 185, 129, 0.1);
+      color: var(--success);
+      border: 1px solid rgba(16, 185, 129, 0.2);
+      padding: 0.3rem 0.75rem;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      background-color: var(--success);
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse { 0% { opacity: 0.4; } 50% { opacity: 1; } 100% { opacity: 0.4; } }
+
+    .nav-tabs {
+      background: var(--bg-card);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      gap: 0.5rem;
+      padding: 0.5rem 2rem;
+      overflow-x: auto;
+    }
+    .tab-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      padding: 0.6rem 1rem;
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      white-space: nowrap;
+    }
+    .tab-btn:hover {
+      color: var(--text);
+      background: rgba(255, 255, 255, 0.05);
+    }
+    .tab-btn.active {
+      color: white;
+      background: var(--primary);
+    }
+
+    main {
+      flex: 1;
+      padding: 2rem;
+      max-width: 1400px;
+      width: 100%;
+      margin: 0 auto;
+    }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; animation: fadeIn 0.2s ease-in-out; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+
+    .grid-4 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 1.25rem;
+      margin-bottom: 2rem;
+    }
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+      margin-bottom: 2rem;
+    }
+    @media(max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } }
+
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem;
+    }
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+    }
+    .card-title {
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .stat-val {
+      font-size: 2rem;
+      font-weight: 800;
+      margin: 0.25rem 0;
+    }
+    .stat-label {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    .badge-critical { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
+    .badge-high { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); }
+    .badge-medium { background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3); }
+    .badge-low { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.875rem;
+    }
+    th {
+      text-align: left;
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid var(--border);
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+    td {
+      padding: 0.85rem 1rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+    tr:hover td { background: rgba(255, 255, 255, 0.02); }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: var(--primary);
+      color: white;
+      border: none;
+      padding: 0.6rem 1rem;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      text-decoration: none;
+    }
+    .btn:hover { background: var(--primary-hover); transform: translateY(-1px); }
+    .btn-secondary { background: var(--bg-surface); color: var(--text); border: 1px solid var(--border); }
+    .btn-secondary:hover { background: rgba(255, 255, 255, 0.1); }
+    .btn-success { background: var(--success); }
+    .btn-success:hover { background: #059669; }
+    .btn-danger { background: var(--danger); }
+    .btn-danger:hover { background: #dc2626; }
+    .btn-sm { padding: 0.35rem 0.65rem; font-size: 0.75rem; }
+
+    input, select, textarea {
+      width: 100%;
+      background: var(--bg-dark);
+      border: 1px solid var(--border);
+      color: white;
+      padding: 0.65rem 0.85rem;
+      border-radius: 6px;
+      font-family: inherit;
+      font-size: 0.875rem;
+      margin-bottom: 1rem;
+    }
+    input:focus, select:focus, textarea:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+    }
+    label {
+      display: block;
+      margin-bottom: 0.4rem;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+
+    .terminal {
+      background: #050811;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem;
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      height: 320px;
+      overflow-y: auto;
+      line-height: 1.5;
+    }
+    .term-line { margin-bottom: 0.25rem; }
+    .term-info { color: #60a5fa; }
+    .term-warn { color: #fbbf24; }
+    .term-err { color: #f87171; }
+    .term-time { color: #6b7280; margin-right: 0.5rem; }
+
+    .diff-view {
+      font-family: var(--font-mono);
+      background: #050811;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem;
+      font-size: 0.8rem;
+      line-height: 1.4;
+      overflow-x: auto;
+      white-space: pre;
+    }
+    .diff-del { color: #f87171; background: rgba(239, 68, 68, 0.1); display: block; }
+    .diff-add { color: #34d399; background: rgba(16, 185, 129, 0.1); display: block; }
+
+    .progress-bar {
+      width: 100%;
+      height: 8px;
+      background: var(--border);
+      border-radius: 9999px;
+      overflow: hidden;
+      margin: 1rem 0;
+    }
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--primary), #a855f7);
+      width: 0%;
+      transition: width 0.3s ease;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="logo">
+      <span class="logo-badge">AutoForge</span>
+      <span>DevSecOps Platform</span>
+    </div>
+    <div class="header-actions">
+      <div class="status-pill">
+        <span class="status-dot"></span>
+        <span>Backend Online (v1.0.0)</span>
+      </div>
+      <a href="/swagger-ui.html" target="_blank" class="btn btn-secondary btn-sm">API Docs</a>
+      <button class="btn btn-sm" onclick="showTriggerModal()">+ Trigger Scan</button>
+    </div>
+  </header>
+
+  <nav class="nav-tabs">
+    <button class="tab-btn active" onclick="switchTab('overview')">📊 Overview</button>
+    <button class="tab-btn" onclick="switchTab('projects')">📁 Projects</button>
+    <button class="tab-btn" onclick="switchTab('console')">⚡ Live Console</button>
+    <button class="tab-btn" onclick="switchTab('findings')">🛡️ Findings & AI Fix</button>
+    <button class="tab-btn" onclick="switchTab('policy')">⚖️ CI Policy Gates</button>
+    <button class="tab-btn" onclick="switchTab('analysis')">🧬 Graph & Privacy</button>
+    <button class="tab-btn" onclick="switchTab('iac')">📦 IaC & Container</button>
+  </nav>
+
+  <main>
+    <div id="overview" class="tab-content active">
+      <div class="grid-4">
+        <div class="card">
+          <div class="stat-label">Security Health Score</div>
+          <div class="stat-val" style="color: var(--success);" id="statHealth">100 / 100</div>
+          <div style="font-size: 0.75rem; color: var(--text-muted);">Deterministic risk formula</div>
+        </div>
+        <div class="card">
+          <div class="stat-label">Total Projects</div>
+          <div class="stat-val" id="statProjects">0</div>
+          <div style="font-size: 0.75rem; color: var(--text-muted);">Authorized repositories</div>
+        </div>
+        <div class="card">
+          <div class="stat-label">Total Scans Executed</div>
+          <div class="stat-val" id="statScans">0</div>
+          <div style="font-size: 0.75rem; color: var(--text-muted);">Queued & Completed jobs</div>
+        </div>
+        <div class="card">
+          <div class="stat-label">Active Vulnerabilities</div>
+          <div class="stat-val" style="color: var(--danger);" id="statFindings">0</div>
+          <div style="font-size: 0.75rem; color: var(--text-muted);">Filtered by AST reachability</div>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">Recent Scans</h3>
+            <button class="btn btn-secondary btn-sm" onclick="loadDashboard()">Refresh</button>
+          </div>
+          <table>
+            <thead>
+              <tr><th>Job ID</th><th>Commit</th><th>Status</th><th>Started</th></tr>
+            </thead>
+            <tbody id="recentScansTable">
+              <tr><td colspan="4" style="text-align: center; color: var(--text-muted);">No scans recorded yet.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">Top Risk Findings</h3>
+          </div>
+          <table>
+            <thead>
+              <tr><th>Rule ID</th><th>Severity</th><th>File</th><th>Action</th></tr>
+            </thead>
+            <tbody id="topFindingsTable">
+              <tr><td colspan="4" style="text-align: center; color: var(--text-muted);">No findings detected.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div id="projects" class="tab-content">
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-header"><h3 class="card-title">Register New Repository</h3></div>
+          <form id="createProjectForm" onsubmit="handleCreateProject(event)">
+            <label>Project Name</label>
+            <input type="text" id="projName" placeholder="e.g. backend-api" required />
+            <label>Repository URL</label>
+            <input type="url" id="projUrl" placeholder="https://github.com/org/repo.git" required />
+            <label>Default Branch</label>
+            <input type="text" id="projBranch" value="main" required />
+            <button type="submit" class="btn">Register Repository</button>
+          </form>
+        </div>
+        <div class="card">
+          <div class="card-header"><h3 class="card-title">Connected Repositories</h3></div>
+          <table>
+            <thead><tr><th>ID</th><th>Name</th><th>Branch</th><th>Action</th></tr></thead>
+            <tbody id="projectsTable"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div id="console" class="tab-content">
+      <div class="card" style="margin-bottom: 1.5rem;">
+        <div class="card-header">
+          <h3 class="card-title">Live Scan Orchestration & WebSocket Stream</h3>
+          <span id="activeJobStatus" class="badge badge-medium">IDLE</span>
+        </div>
+        <div class="progress-bar"><div class="progress-fill" id="scanProgress"></div></div>
+        <div class="terminal" id="termLogs">
+          <div class="term-line"><span class="term-time">[00:00:00]</span><span class="term-info">AutoForge console initialized. WebSocket client listening on /api/v1/ws/scans/*</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="findings" class="tab-content">
+      <div class="card">
+        <div class="card-header">
+          <h3 class="card-title">Security Findings & Automated AI Remediation</h3>
+          <a id="btnSarifExport" href="#" class="btn btn-secondary btn-sm" onclick="downloadSarif()">📥 Download SARIF 2.1.0</a>
+        </div>
+        <table>
+          <thead>
+            <tr><th>Rule</th><th>Severity</th><th>Location</th><th>Snippet</th><th>Remediation</th></tr>
+          </thead>
+          <tbody id="allFindingsTable">
+            <tr><td colspan="5" style="text-align: center; color: var(--text-muted);">Loading findings...</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div id="diffModal" class="card" style="margin-top: 1.5rem; display: none;">
+        <div class="card-header">
+          <h3 class="card-title">AI Remediation Preview & Unified Diff</h3>
+          <button class="btn btn-secondary btn-sm" onclick="document.getElementById('diffModal').style.display='none'">Close</button>
+        </div>
+        <div class="diff-view" id="diffContent"></div>
+        <div style="margin-top: 1rem; display: flex; gap: 0.75rem;">
+          <button class="btn btn-success" id="btnCreatePr" onclick="handleCreatePr()">🚀 Create GitHub PR</button>
+          <button class="btn btn-secondary" id="btnDownloadPatch" onclick="handleDownloadPatch()">💾 Download .patch</button>
+          <button class="btn btn-secondary" id="btnApproveFix" onclick="handleApproveFix()">✅ Approve</button>
+          <button class="btn btn-danger" id="btnRejectFix" onclick="handleRejectFix()">❌ Reject</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="policy" class="tab-content">
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-header"><h3 class="card-title">Evaluate CI/CD Policy Gate</h3></div>
+          <form onsubmit="handlePolicyEval(event)">
+            <label>Scan ID</label>
+            <input type="number" id="polScanId" value="1" required />
+            <label>Max Critical Allowed</label>
+            <input type="number" id="polMaxCrit" value="0" required />
+            <label>Max High Allowed</label>
+            <input type="number" id="polMaxHigh" value="2" required />
+            <button type="submit" class="btn">Evaluate Gate Policy</button>
+          </form>
+        </div>
+        <div class="card">
+          <div class="card-header"><h3 class="card-title">Evaluation Result</h3></div>
+          <div id="policyResultBanner" style="padding: 1rem; border-radius: 8px; background: rgba(255,255,255,0.05); font-family: var(--font-mono); font-size: 0.85rem;">
+            Ready to evaluate. Submit scan ID to test CI gate pass/fail criteria.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="analysis" class="tab-content">
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">Cross-Service Blast Radius</h3>
+            <button class="btn btn-secondary btn-sm" onclick="rebuildGraph()">Rebuild Graph</button>
+          </div>
+          <label>Root Service</label>
+          <input type="text" id="blastService" value="auth-service" />
+          <button class="btn" onclick="calculateBlastRadius()">Query Blast Radius</button>
+          <div id="blastResult" style="margin-top: 1rem; font-family: var(--font-mono); font-size: 0.85rem;"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><h3 class="card-title">Zero-Knowledge / Privacy Commitment</h3></div>
+          <label>Scan Results JSON</label>
+          <textarea id="zkScanResults" rows="3">{"scan_id": 1, "critical": 0, "status": "COMPLETED"}</textarea>
+          <label>Tenant Secret Salt</label>
+          <input type="text" id="zkSalt" value="autoforge-secure-salt-2026" />
+          <div style="display: flex; gap: 0.5rem;">
+            <button class="btn btn-secondary" onclick="generateZkCommitment()">Generate Commitment</button>
+            <button class="btn btn-secondary" onclick="verifyZkCommitment()">Verify Commitment</button>
+          </div>
+          <div id="zkResult" style="margin-top: 1rem; font-family: var(--font-mono); font-size: 0.8rem; word-break: break-all;"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="iac" class="tab-content">
+      <div class="card">
+        <div class="card-header"><h3 class="card-title">IaC & Dockerfile Static Hardening Auditor</h3></div>
+        <div class="grid-2">
+          <div>
+            <label>Manifest Type</label>
+            <select id="iacType">
+              <option value="k8s">Kubernetes YAML (Pod/Deployment)</option>
+              <option value="dockerfile">Dockerfile</option>
+            </select>
+            <label>Manifest Content</label>
+            <textarea id="iacContent" rows="10" placeholder="Paste YAML or Dockerfile here...">apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vulnerable-pod
+spec:
+  template:
+    spec:
+      containers:
+        - name: app
+          image: alpine:latest
+          securityContext:
+            privileged: true</textarea>
+            <button class="btn" onclick="runIacAudit()">Run Security Audit</button>
+          </div>
+          <div>
+            <label>Audit Findings</label>
+            <div id="iacResults" style="background: #050811; border: 1px solid var(--border); border-radius: 8px; padding: 1rem; min-height: 280px; font-family: var(--font-mono); font-size: 0.8rem;">
+              Click 'Run Security Audit' to check for privileged containers, missing limits, or root users.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    let activeFindingId = null;
+    let activeFixId = null;
+
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+      event.target.classList.add('active');
+      document.getElementById(tabId).classList.add('active');
+      if (tabId === 'overview') loadDashboard();
+      if (tabId === 'projects') loadProjects();
+      if (tabId === 'findings') loadFindings();
+    }
+
+    async function loadDashboard() {
+      try {
+        const res = await fetch('/api/v1/dashboard/summary');
+        if (res.ok) {
+          const data = await res.json();
+          document.getElementById('statHealth').innerText = (data.healthScore || 100) + ' / 100';
+          document.getElementById('statProjects').innerText = data.totalProjects || 0;
+          document.getElementById('statScans').innerText = data.totalScans || 0;
+          document.getElementById('statFindings').innerText = data.totalFindings || 0;
+        }
+
+        const scanRes = await fetch('/api/v1/dashboard/recent-scans?limit=5');
+        if (scanRes.ok) {
+          const scans = await scanRes.json();
+          const tbody = document.getElementById('recentScansTable');
+          tbody.innerHTML = scans.length ? scans.map(s => `
+            <tr>
+              <td><strong>#${s.id}</strong></td>
+              <td><code>${s.commitSha ? s.commitSha.substring(0, 7) : 'HEAD'}</code></td>
+              <td><span class="badge ${s.status === 'COMPLETED' ? 'badge-low' : 'badge-high'}">${s.status}</span></td>
+              <td>${s.createdAt ? new Date(s.createdAt).toLocaleTimeString() : 'now'}</td>
+            </tr>
+          `).join('') : '<tr><td colspan="4" style="text-align: center;">No scans found.</td></tr>';
+        }
+
+        const fRes = await fetch('/api/v1/dashboard/top-findings?limit=5');
+        if (fRes.ok) {
+          const top = await fRes.json();
+          const tbody = document.getElementById('topFindingsTable');
+          tbody.innerHTML = top.length ? top.map(f => `
+            <tr>
+              <td><code>${f.ruleId}</code></td>
+              <td><span class="badge badge-${(f.severity || 'medium').toLowerCase()}">${f.severity}</span></td>
+              <td>${f.filePath || 'src/main/java'}</td>
+              <td><button class="btn btn-secondary btn-sm" onclick="previewFix(${f.id})">Fix</button></td>
+            </tr>
+          `).join('') : '<tr><td colspan="4" style="text-align: center;">No critical findings.</td></tr>';
+        }
+      } catch (err) {
+        console.error('Failed to load dashboard:', err);
+      }
+    }
+
+    async function loadProjects() {
+      try {
+        const res = await fetch('/api/v1/projects');
+        if (res.ok) {
+          const projects = await res.json();
+          document.getElementById('projectsTable').innerHTML = projects.map(p => `
+            <tr>
+              <td>${p.id}</td>
+              <td><strong>${p.name}</strong></td>
+              <td><code>${p.defaultBranch}</code></td>
+              <td><button class="btn btn-sm" onclick="triggerScanForProject(${p.id})">Scan</button></td>
+            </tr>
+          `).join('');
+        }
+      } catch (e) { console.error(e); }
+    }
+
+    async function handleCreateProject(e) {
+      e.preventDefault();
+      const payload = {
+        name: document.getElementById('projName').value,
+        repoUrl: document.getElementById('projUrl').value,
+        defaultBranch: document.getElementById('projBranch').value
+      };
+      const res = await fetch('/api/v1/projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        alert('Repository registered successfully!');
+        loadProjects();
+      }
+    }
+
+    async function triggerScanForProject(projectId) {
+      switchTab('console');
+      document.querySelector('.tab-btn:nth-child(3)').classList.add('active');
+      const payload = {
+        projectId: projectId,
+        commitSha: '6dcb09b5b57875f334f61aebed695e2e4193db5e',
+        branch: 'main',
+        idempotencyKey: 'scan-' + Date.now()
+      };
+      logToTerminal('Triggering scan for project ' + projectId + '...');
+      const res = await fetch('/api/v1/scans/trigger', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        const job = await res.json();
+        logToTerminal(`Scan job #${job.id} enqueued in Redis queue 'autoforge:scan_jobs'. Status: QUEUED`);
+        connectWebSocket(job.id);
+      }
+    }
+
+    function showTriggerModal() {
+      triggerScanForProject(1);
+    }
+
+    function connectWebSocket(jobId) {
+      const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const ws = new WebSocket(`${proto}//${window.location.host}/api/v1/ws/scans/${jobId}`);
+      document.getElementById('activeJobStatus').innerText = 'SCANNING #' + jobId;
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          logToTerminal(`[${msg.level || 'INFO'}] ${msg.message}`);
+          if (msg.progress) {
+            document.getElementById('scanProgress').style.width = msg.progress + '%';
+          }
+        } catch (e) {
+          logToTerminal(event.data);
+        }
+      };
+      ws.onclose = () => {
+        document.getElementById('activeJobStatus').innerText = 'COMPLETED';
+        document.getElementById('scanProgress').style.width = '100%';
+        logToTerminal(`WebSocket connection closed for job #${jobId}.`);
+      };
+    }
+
+    function logToTerminal(text) {
+      const term = document.getElementById('termLogs');
+      const time = new Date().toLocaleTimeString();
+      term.innerHTML += `<div class="term-line"><span class="term-time">[${time}]</span><span class="term-info">${text}</span></div>`;
+      term.scrollTop = term.scrollHeight;
+    }
+
+    async function loadFindings() {
+      try {
+        const res = await fetch('/api/v1/dashboard/top-findings?limit=20');
+        if (res.ok) {
+          const findings = await res.json();
+          document.getElementById('allFindingsTable').innerHTML = findings.map(f => `
+            <tr>
+              <td><code>${f.ruleId}</code></td>
+              <td><span class="badge badge-${(f.severity || 'medium').toLowerCase()}">${f.severity}</span></td>
+              <td>${f.filePath}:${f.lineNumber}</td>
+              <td><code>${(f.codeSnippet || '').substring(0, 40)}</code></td>
+              <td><button class="btn btn-secondary btn-sm" onclick="previewFix(${f.id})">Fix</button></td>
+            </tr>
+          `).join('');
+        }
+      } catch (e) { console.error(e); }
+    }
+
+    async function previewFix(findingId) {
+      activeFindingId = findingId;
+      const res = await fetch(`/api/v1/findings/${findingId}/remediation/preview`, { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        document.getElementById('diffModal').style.display = 'block';
+        document.getElementById('diffContent').innerText = data.unifiedDiff;
+      }
+    }
+
+    async function handleCreatePr() {
+      if (!activeFindingId) return;
+      const genRes = await fetch(`/api/v1/findings/${activeFindingId}/remediation/generate`, { method: 'POST' });
+      if (genRes.ok) {
+        const fix = await genRes.json();
+        activeFixId = fix.id;
+        const prRes = await fetch(`/api/v1/remediations/${fix.id}/create-pr`, { method: 'POST' });
+        if (prRes.ok) {
+          const pr = await prRes.json();
+          alert(`Pull Request created successfully!\nURL: ${pr.github_pr_url}\nBranch: ${pr.branch_name}`);
+        }
+      }
+    }
+
+    function handleDownloadPatch() {
+      if (activeFixId) window.location.href = `/api/v1/remediations/${activeFixId}/patch`;
+      else alert('Please generate fix first.');
+    }
+
+    async function handleApproveFix() {
+      if (!activeFixId) return;
+      await fetch(`/api/v1/remediations/${activeFixId}/approve`, { method: 'POST' });
+      alert('Fix approved!');
+    }
+
+    async function handleRejectFix() {
+      if (!activeFixId) return;
+      await fetch(`/api/v1/remediations/${activeFixId}/reject`, { method: 'POST' });
+      alert('Fix rejected.');
+    }
+
+    function downloadSarif() {
+      window.location.href = '/api/v1/scans/1/export/sarif';
+    }
+
+    async function handlePolicyEval(e) {
+      e.preventDefault();
+      const payload = {
+        scanId: Number(document.getElementById('polScanId').value),
+        maxCritical: Number(document.getElementById('polMaxCrit').value),
+        maxHigh: Number(document.getElementById('polMaxHigh').value)
+      };
+      const res = await fetch('/api/v1/policies/evaluate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const banner = document.getElementById('policyResultBanner');
+        banner.style.borderLeft = data.passed ? '4px solid var(--success)' : '4px solid var(--danger)';
+        banner.innerHTML = `
+          <h4 style="color: ${data.passed ? 'var(--success)' : 'var(--danger)'};">${data.status}: ${data.passed ? 'PASSED CI GATE' : 'BLOCKED BY POLICY'}</h4>
+          <p style="margin-top: 0.5rem;">${data.reason}</p>
+        `;
+      }
+    }
+
+    async function rebuildGraph() {
+      const res = await fetch('/api/v1/graph/rebuild', { method: 'POST' });
+      if (res.ok) alert('Cross-repository knowledge graph rebuilt!');
+    }
+
+    async function calculateBlastRadius() {
+      const svc = document.getElementById('blastService').value;
+      const res = await fetch(`/api/v1/graph/blast-radius?service=${encodeURIComponent(svc)}`);
+      if (res.ok) {
+        const data = await res.json();
+        document.getElementById('blastResult').innerHTML = `
+          <strong>Blast Radius for ${data.source_service}:</strong><br>
+          Affected Services (${data.total_affected}):<br>
+          ${data.blast_radius.map(s => '• ' + s).join('<br>')}
+        `;
+      }
+    }
+
+    async function generateZkCommitment() {
+      const res = await fetch('/api/v1/privacy/commit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scan_results: document.getElementById('zkScanResults').value,
+          secret_salt: document.getElementById('zkSalt').value
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        document.getElementById('zkResult').innerHTML = `
+          <strong>Commitment Hash:</strong><br><code>${data.commitment}</code><br>
+          <strong>Status:</strong> ${data.status} | <strong>Algorithm:</strong> ${data.algorithm}
+        `;
+      }
+    }
+
+    async function verifyZkCommitment() {
+      const res = await fetch('/api/v1/privacy/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scan_results: document.getElementById('zkScanResults').value,
+          secret_salt: document.getElementById('zkSalt').value,
+          commitment: document.getElementById('zkResult').querySelector('code')?.innerText || ''
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        alert(data.valid ? 'Commitment verified successfully! Zero-knowledge integrity preserved.' : 'Verification failed: Data or salt mismatch.');
+      }
+    }
+
+    async function runIacAudit() {
+      const res = await fetch('/api/v1/analysis/iac', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          manifest_type: document.getElementById('iacType').value,
+          content: document.getElementById('iacContent').value
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        document.getElementById('iacResults').innerHTML = `
+          <strong>Found ${data.findings_count} Issue(s):</strong><br><br>
+          ${data.findings.map(f => `
+            <div style="margin-bottom: 0.75rem; border-left: 3px solid ${f.severity === 'CRITICAL' ? 'var(--danger)' : 'var(--warning)'}; padding-left: 0.5rem;">
+              <span class="badge badge-${(f.severity || 'high').toLowerCase()}">${f.severity}</span>
+              <strong>${f.rule_id}</strong><br>
+              ${f.message}
+            </div>
+          `).join('')}
+        `;
+      }
+    }
+
+    loadDashboard();
+  </script>
+</body>
+</html>

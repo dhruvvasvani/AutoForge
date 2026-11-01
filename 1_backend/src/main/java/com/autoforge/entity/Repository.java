@@ -13,7 +13,6 @@ import java.time.Instant;
 @Setter
 @NoArgsConstructor
 public class Repository {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -31,6 +30,6 @@ public class Repository {
     @Column(name = "webhook_id")
     private Long webhookId;
 
-    @Column(name = "created_at", nullable = true, updatable = false)
+    @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt = Instant.now();
 }

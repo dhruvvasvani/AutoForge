@@ -1,0 +1,6 @@
+CREATE TABLE IF NOT EXISTS ast_metrics (
+    id BIGSERIAL PRIMARY KEY,
+    scan_id BIGINT NOT NULL UNIQUE REFERENCES scans(id) ON DELETE CASCADE,
+    metrics_json TEXT NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT now()
+);

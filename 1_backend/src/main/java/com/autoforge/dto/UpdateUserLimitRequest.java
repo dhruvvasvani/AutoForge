@@ -8,5 +8,5 @@ import lombok.Setter;
 @Setter
 public class UpdateUserLimitRequest {
     @NotBlank(message = "planName is required")
-    private String planName; // e.g. "FREE" or "PAID"
+    private String planName;
 }

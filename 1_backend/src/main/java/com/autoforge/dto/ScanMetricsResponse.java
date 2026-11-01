@@ -1,7 +1,27 @@
 package com.autoforge.dto;
 
-import java.time.Instant;
-import java.util.Map;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
-public record ScanMetricsResponse(Long id, Instant scanTimestamp, Map<String, Object> metrics) {
+@Getter
+@Setter
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class ScanMetricsResponse {
+    @JsonProperty("scan_id")
+    private String scanId;
+
+    @JsonProperty("counts")
+    private SeverityCountsDto counts;
+
+    @JsonProperty("total_findings")
+    private int totalFindings;
+
+    @JsonProperty("health_score")
+    private int healthScore;
 }

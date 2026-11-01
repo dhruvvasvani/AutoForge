@@ -7,4 +7,5 @@ import java.util.List;
 
 public interface PlanRequestRepository extends JpaRepository<PlanRequest, Long> {
     List<PlanRequest> findByStatus(String status);
+    List<PlanRequest> findByUserIdOrderByCreatedAtDesc(Long userId);
 }

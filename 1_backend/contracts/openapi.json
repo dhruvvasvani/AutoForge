@@ -1,0 +1,72 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "AutoForge REST API",
+    "description": "Standardized OpenAPI specification for AutoForge Backend Services",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8080",
+      "description": "Local Development Server"
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Health check reporting application and database connectivity",
+        "responses": {
+          "200": { "description": "System Healthy" }
+        }
+      }
+    },
+    "/api/v1/auth/register": {
+      "post": {
+        "summary": "User registration with role validation",
+        "responses": {
+          "201": { "description": "User created" }
+        }
+      }
+    },
+    "/api/v1/auth/login": {
+      "post": {
+        "summary": "User login returning JWT access token",
+        "responses": {
+          "200": { "description": "Authenticated" }
+        }
+      }
+    },
+    "/api/v1/scans/trigger": {
+      "post": {
+        "summary": "Trigger scan job with idempotency",
+        "responses": {
+          "201": { "description": "Scan queued" }
+        }
+      }
+    },
+    "/api/v1/results/submit": {
+      "post": {
+        "summary": "Atomic ingestion of hybrid AST and ML results",
+        "responses": {
+          "201": { "description": "Results ingested" }
+        }
+      }
+    },
+    "/api/v1/scans/{scanId}/export/sarif": {
+      "get": {
+        "summary": "Export SARIF 2.1.0 report with traces and fingerprints",
+        "responses": {
+          "200": { "description": "SARIF JSON document" }
+        }
+      }
+    },
+    "/api/v1/policies/evaluate": {
+      "post": {
+        "summary": "Evaluate commit against CI/CD merge gate policy",
+        "responses": {
+          "200": { "description": "Evaluation decision" }
+        }
+      }
+    }
+  }
+}

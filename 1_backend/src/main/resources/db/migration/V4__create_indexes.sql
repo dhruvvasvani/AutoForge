@@ -1,0 +1,10 @@
+CREATE INDEX IF NOT EXISTS idx_vulnerabilities_scan_id ON vulnerabilities(scan_id);
+CREATE INDEX IF NOT EXISTS idx_vulnerabilities_severity ON vulnerabilities(severity);
+CREATE INDEX IF NOT EXISTS idx_vulnerabilities_is_reachable ON vulnerabilities(is_reachable);
+CREATE INDEX IF NOT EXISTS idx_vulnerabilities_status ON vulnerabilities(status);
+CREATE INDEX IF NOT EXISTS idx_scans_repository_id ON scans(repository_id);
+CREATE INDEX IF NOT EXISTS idx_scans_status ON scans(status);
+CREATE INDEX IF NOT EXISTS idx_fixes_vulnerability_id ON fixes(vulnerability_id);
+CREATE INDEX IF NOT EXISTS idx_pull_requests_fix_id ON pull_requests(fix_id);
+CREATE INDEX IF NOT EXISTS idx_reports_scan_id ON reports(scan_id);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_actor_user_id ON audit_logs(actor_user_id);

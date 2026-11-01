@@ -13,7 +13,6 @@ import java.time.Instant;
 @Setter
 @NoArgsConstructor
 public class Report {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -22,7 +21,7 @@ public class Report {
     @JoinColumn(name = "scan_id", nullable = false)
     private Scan scan;
 
-    @Column(name = "file_path")
+    @Column(name = "file_path", length = 500)
     private String filePath;
 
     @Column(name = "generated_at", nullable = false, updatable = false)

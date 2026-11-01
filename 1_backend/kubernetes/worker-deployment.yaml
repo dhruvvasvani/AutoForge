@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: autoforge-worker
+  namespace: autoforge
+  labels:
+    app: autoforge-worker
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: autoforge-worker
+  template:
+    metadata:
+      labels:
+        app: autoforge-worker
+    spec:
+      containers:
+        - name: worker
+          image: autoforge/worker:latest
+          env:
+            - name: REDIS_HOST
+              value: "redis.autoforge.svc.cluster.local"
+            - name: REDIS_PORT
+              value: "6379"
+            - name: QUEUE_NAME
+              value: "autoforge:scan_jobs"
+            - name: BACKEND_API_URL
+              value: "http://autoforge-backend-svc:8080"
+          resources:
+            requests:
+              cpu: "1000m"
+              memory: "1Gi"
+            limits:
+              cpu: "2000m"
+              memory: "2Gi"

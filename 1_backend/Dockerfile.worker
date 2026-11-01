@@ -1,0 +1,17 @@
+FROM maven:3.9.6-eclipse-temurin-17 AS builder
+WORKDIR /workspace
+COPY pom.xml .
+COPY src ./src
+RUN mvn clean package -DskipTests
+
+FROM eclipse-temurin:17-jre-jammy
+WORKDIR /app
+
+RUN groupadd -r autoforge && useradd -r -g autoforge autoforge
+
+COPY --from=builder /workspace/target/*.jar /app/autoforge-worker.jar
+RUN chown -R autoforge:autoforge /app
+
+USER autoforge
+
+ENTRYPOINT ["java", "-XX:+UseG1GC", "-XX:MaxRAMPercentage=75.0", "-Dautoforge.mode=worker", "-jar", "/app/autoforge-worker.jar"]

@@ -13,7 +13,6 @@ import java.util.function.Function;
 
 @Service
 public class JwtService {
-
     @Value("${autoforge.jwt.secret}")
     private String secret;
 
@@ -26,11 +25,10 @@ public class JwtService {
 
     public String generateToken(UserDetails userDetails) {
         Date now = new Date();
-        Date expiry = new Date(now.getTime() + expirationMs);
         return Jwts.builder()
                 .subject(userDetails.getUsername())
                 .issuedAt(now)
-                .expiration(expiry)
+                .expiration(new Date(now.getTime() + expirationMs))
                 .signWith(signingKey())
                 .compact();
     }
@@ -49,11 +47,6 @@ public class JwtService {
     }
 
     private <T> T extractClaim(String token, Function<io.jsonwebtoken.Claims, T> resolver) {
-        io.jsonwebtoken.Claims claims = Jwts.parser()
-                .verifyWith(signingKey())
-                .build()
-                .parseSignedClaims(token)
-                .getPayload();
-        return resolver.apply(claims);
+        return resolver.apply(Jwts.parser().verifyWith(signingKey()).build().parseSignedClaims(token).getPayload());
     }
 }

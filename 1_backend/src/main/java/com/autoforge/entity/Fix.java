@@ -13,19 +13,28 @@ import java.time.Instant;
 @Setter
 @NoArgsConstructor
 public class Fix {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "vulnerability_id", nullable = false)
+    @JoinColumn(name = "vulnerability_id")
     private Vulnerability vulnerability;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "finding_id")
+    private Finding finding;
+
+    @Column(name = "file_path", length = 512)
+    private String filePath;
+
+    @Column(name = "status", length = 30)
+    private String status = "PENDING";
 
     @Column(name = "suggested_patch", columnDefinition = "TEXT")
     private String suggestedPatch;
 
-    @Column(name = "model_used")
+    @Column(name = "model_used", length = 100)
     private String modelUsed = "gemini-2.5-flash";
 
     @Column(nullable = false)

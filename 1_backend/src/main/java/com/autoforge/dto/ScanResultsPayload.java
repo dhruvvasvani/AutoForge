@@ -7,11 +7,16 @@ import lombok.Setter;
 @Getter
 @Setter
 public class ScanResultsPayload {
+    private String version = "v2.0";
+    private Long scanId;
     private String repoFullName;
     private String commitSha;
-    private JsonNode semgrep; // raw Semgrep findings array
-    private JsonNode checkov; // raw Checkov failed_checks array
-    private JsonNode ast;
-    private JsonNode taggedFindings;
-    private Double combinedRiskScore;
+    private String reachabilityTag;
+    private Boolean isReachable;
+    private String priority;
+    private String mlPriority;
+    private JsonNode semgrep;
+    private JsonNode checkov;
+    private JsonNode traces;
+    private JsonNode modelOutputs;
 }

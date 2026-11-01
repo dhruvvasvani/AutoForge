@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AutoForgeScanJobQueueMessage",
+  "description": "Agreed message contract for Redis queue autoforge:scan_jobs",
+  "type": "object",
+  "properties": {
+    "job_id": { "type": "string" },
+    "project_id": { "type": "string" },
+    "repo_url": { "type": "string", "format": "uri" },
+    "commit_sha": { "type": "string", "minLength": 7, "maxLength": 64 },
+    "branch": { "type": "string", "default": "main" },
+    "repository_id": { "type": "integer" },
+    "scan_id": { "type": "integer" }
+  },
+  "required": ["repo_url", "commit_sha"]
+}

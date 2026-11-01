@@ -1,5 +1,5 @@
 package com.autoforge.entity;
 
 public enum ScanStatus {
-    QUEUED, RUNNING, COMPLETED, FAILED
+    QUEUED, RUNNING, PROCESSING, COMPLETED, FAILED
 }

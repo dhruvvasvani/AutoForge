@@ -13,7 +13,6 @@ import java.time.Instant;
 @Setter
 @NoArgsConstructor
 public class WebhookEvent {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;

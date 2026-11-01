@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AutoForgeHybridResultPayload",
+  "description": "Shared contract for scanner scored_results.json and POST /api/v1/results/submit payload",
+  "type": "object",
+  "properties": {
+    "job_id": { "type": "integer" },
+    "project_id": { "type": "integer" },
+    "commit_sha": { "type": "string" },
+    "overall_risk_score": { "type": "number" },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "rule_id": { "type": "string" },
+          "title": { "type": "string" },
+          "file_path": { "type": "string" },
+          "line_number": { "type": "integer" },
+          "severity": { "type": "string", "enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"] },
+          "code_snippet": { "type": "string" },
+          "is_reachable": { "type": "boolean" },
+          "reachability_status": { "type": "string" },
+          "priority": { "type": "string" },
+          "ml_confidence_score": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+          "combined_risk_score": { "type": "number" },
+          "call_traces": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "step_number": { "type": "integer" },
+                "file_path": { "type": "string" },
+                "line_number": { "type": "integer" },
+                "symbol_name": { "type": "string" }
+              },
+              "required": ["step_number", "file_path", "line_number", "symbol_name"]
+            }
+          }
+        },
+        "required": ["rule_id", "title", "file_path", "line_number", "severity"]
+      }
+    },
+    "metrics": { "type": "object" }
+  },
+  "required": ["job_id", "findings"]
+}

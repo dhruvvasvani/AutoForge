@@ -109,4 +109,3 @@ CREATE TABLE audit_logs (
 INSERT INTO plans (name, max_repositories, max_scans_per_month) VALUES
     ('FREE', 1, 10),
     ('PAID', 20, 500);
-

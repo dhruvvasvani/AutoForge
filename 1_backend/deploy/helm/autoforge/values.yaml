@@ -1,0 +1,25 @@
+backend:
+  replicaCount: 2
+  image:
+    repository: autoforge/backend
+    tag: latest
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8080
+
+worker:
+  replicaCount: 3
+  image:
+    repository: autoforge/worker
+    tag: latest
+    pullPolicy: IfNotPresent
+
+redis:
+  host: redis.autoforge.svc.cluster.local
+  port: 6379
+
+postgresql:
+  host: postgres.autoforge.svc.cluster.local
+  port: 5432
+  database: autoforge

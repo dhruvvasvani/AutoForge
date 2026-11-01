@@ -1,73 +1,76 @@
 package com.autoforge.config;
 
 import com.autoforge.security.AppUserDetailsService;
-import com.autoforge.security.InternalApiTokenFilter;
+import com.autoforge.security.InternalApiKeyFilter;
 import com.autoforge.security.JwtAuthFilter;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpMethod;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
-import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
-import org.springframework.boot.web.servlet.FilterRegistrationBean;
+import org.springframework.web.cors.CorsConfigurationSource;
 
 @Configuration
 @EnableWebSecurity
-@EnableMethodSecurity
 @RequiredArgsConstructor
 public class SecurityConfig {
-
     private final AppUserDetailsService userDetailsService;
     private final JwtAuthFilter jwtAuthFilter;
-    private final InternalApiTokenFilter internalApiTokenFilter;
+    private final InternalApiKeyFilter internalApiKeyFilter;
+    private final CorsConfigurationSource corsConfigurationSource;
+
+    @Value("${spring.h2.console.enabled:false}")
+    private boolean h2ConsoleEnabled;
 
     private static final String[] PUBLIC_ENDPOINTS = {
-            "/api/auth/**",
-            "/api/webhooks/**",
-            // The filter validates the shared secret for internal API calls.
-            "/api/internal/**",
-            "/v3/api-docs/**",
-            "/swagger-ui/**",
-            "/swagger-ui.html",
-            "/actuator/health"
+            "/", "/index.html", "/favicon.ico", "/css/**", "/js/**",
+            "/health", "/api/v1/health", "/actuator/health", "/actuator/health/**",
+            "/api/auth/**", "/api/v1/auth/**",
+            "/api/webhooks/**", "/api/v1/webhooks/**",
+            "/api/v1/ws/**",
+            "/api/internal/**", "/api/v1/results/**",
+            "/api/v1/scans/*/logs", "/api/v1/scans/*/status",
+            "/api/v1/scans/*/results", "/api/v1/scans/*/ml-predictions",
+            "/dashboard/**", "/api/v1/dashboard/**",
+            "/api/v1/graph/**", "/api/v1/privacy/**",
+            "/api/v1/runtime/**", "/api/v1/analysis/**",
+            "/api/v1/ml/**",
+            "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html"
     };
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-        http
-                .csrf(csrf -> csrf.disable())
-                .cors(Customizer.withDefaults())
-                .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(PUBLIC_ENDPOINTS).permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/admin/**")
-                        .hasAnyRole("ADMIN", "FACULTY", "SECURITY_AUDITOR")
-                        .requestMatchers("/api/admin/**").hasAnyRole("ADMIN", "FACULTY")
-                        .anyRequest().authenticated()
-                )
+        return http.csrf(csrf -> csrf.disable())
+                .cors(cors -> cors.configurationSource(corsConfigurationSource))
+                .authorizeHttpRequests(auth -> {
+                    auth.requestMatchers(PUBLIC_ENDPOINTS).permitAll();
+                    if (h2ConsoleEnabled) {
+                        auth.requestMatchers("/h2-console/**").permitAll();
+                    }
+                    auth.requestMatchers(HttpMethod.GET, "/api/plans").permitAll()
+                            .requestMatchers("/api/admin/**").hasAnyRole("ADMIN", "FACULTY")
+                            .anyRequest().authenticated();
+                })
+                .headers(headers -> {
+                    if (h2ConsoleEnabled) {
+                        headers.frameOptions(frame -> frame.sameOrigin());
+                    }
+                })
                 .sessionManagement(sess -> sess.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authenticationProvider(authenticationProvider())
-                .addFilterBefore(internalApiTokenFilter, UsernamePasswordAuthenticationFilter.class)
-                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
-
-        return http.build();
-    }
-
-    @Bean
-    public FilterRegistrationBean<InternalApiTokenFilter> internalApiTokenFilterRegistration(
-            InternalApiTokenFilter filter) {
-        FilterRegistrationBean<InternalApiTokenFilter> registration = new FilterRegistrationBean<>(filter);
-        registration.setEnabled(false);
-        return registration;
+                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(internalApiKeyFilter, UsernamePasswordAuthenticationFilter.class)
+                .build();
     }
 
     @Bean

@@ -13,7 +13,6 @@ import java.time.Instant;
 @Setter
 @NoArgsConstructor
 public class PullRequest {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -25,7 +24,7 @@ public class PullRequest {
     @Column(name = "github_pr_number")
     private Integer githubPrNumber;
 
-    @Column(name = "github_pr_url")
+    @Column(name = "github_pr_url", length = 500)
     private String githubPrUrl;
 
     @Column(name = "branch_name")

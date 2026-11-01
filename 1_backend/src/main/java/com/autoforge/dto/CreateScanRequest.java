@@ -11,5 +11,4 @@ public class CreateScanRequest {
     private String repoFullName;
     @NotBlank
     private String commitSha;
-    private String eventType = "push";
 }

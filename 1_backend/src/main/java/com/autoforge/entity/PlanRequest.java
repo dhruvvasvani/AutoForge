@@ -1,8 +1,6 @@
 package com.autoforge.entity;
 
 import jakarta.persistence.*;
-import lombok.Data;
-import lombok.Data;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -14,9 +12,7 @@ import java.time.Instant;
 @Getter
 @Setter
 @NoArgsConstructor
-@Data
 public class PlanRequest {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -30,7 +26,7 @@ public class PlanRequest {
     private Plan requestedPlan;
 
     @Column(nullable = false, length = 20)
-    private String status = "PENDING"; // PENDING | APPROVED | REJECTED
+    private String status = "PENDING";
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt = Instant.now();
