@@ -1,3 +1,4 @@
+import argparse
 import subprocess
 import json
 import sys
@@ -74,12 +75,27 @@ def normalize_checkov(results_list):
     return normalized
 
 
-def main():
-    if len(sys.argv) < 2:
-        print("Usage: python scan_wrapper.py <repo_path>")
-        sys.exit(1)
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Run Semgrep + Checkov and write combined findings JSON."
+    )
+    # Old style: python scan_wrapper.py <repo_path>
+    parser.add_argument("repo_path", nargs="?", help="Repository path (positional)")
+    # Backend style: --source-dir <dir> --output <file>
+    parser.add_argument("--source-dir", dest="source_dir", help="Repository path")
+    parser.add_argument("--output", dest="output", help="Result JSON file path")
+    args = parser.parse_args()
 
-    repo_path = sys.argv[1]
+    repo_path = args.source_dir or args.repo_path
+    if not repo_path:
+        parser.error("repo path required (positional or --source-dir)")
+    if not os.path.isdir(repo_path):
+        parser.error(f"repo path is not a directory: {repo_path}")
+    return repo_path, args.output
+
+
+def main():
+    repo_path, output_arg = parse_args()
 
     print("Running Semgrep...")
     semgrep_raw = run_semgrep(repo_path)
@@ -91,12 +107,14 @@ def main():
 
     all_findings = semgrep_findings + checkov_findings
 
-    output_path = os.path.join(repo_path, "combined_scan_results.json")
-    with open(output_path, "w") as f:
+    output_path = output_arg or os.path.join(repo_path, "combined_scan_results.json")
+    out_dir = os.path.dirname(os.path.abspath(output_path))
+    os.makedirs(out_dir, exist_ok=True)
+    with open(output_path, "w", encoding="utf-8") as f:
         json.dump(all_findings, f, indent=2)
 
     print(f"Done. {len(all_findings)} findings written to {output_path}")
 
 
 if __name__ == "__main__":
-    main()
+    main()

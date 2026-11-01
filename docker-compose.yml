@@ -52,6 +52,7 @@ services:
       REDIS_HOST: redis
       AUTOFORGE_INTERNAL_TOKEN: ${AUTOFORGE_INTERNAL_TOKEN:?Set AUTOFORGE_INTERNAL_TOKEN in .env}
       AUTOFORGE_JWT_SECRET: ${AUTOFORGE_JWT_SECRET:?Set AUTOFORGE_JWT_SECRET in .env}
+      INTERNAL_API_KEY: ${AUTOFORGE_INTERNAL_TOKEN:?Set AUTOFORGE_INTERNAL_TOKEN in .env}
     depends_on:
       postgres:
         condition: service_healthy
@@ -93,6 +94,7 @@ services:
     environment:
       AUTOFORGE_REDIS_HOST: redis
       AUTOFORGE_REDIS_PORT: "6379"
+      AUTOFORGE_QUEUE: autoforge:scan_jobs
       AUTOFORGE_AST_SERVICE_URL: http://analyzer-api:8090
       AUTOFORGE_BACKEND_URL: http://backend:8089
       AUTOFORGE_INTERNAL_SCAN_TOKEN: ${AUTOFORGE_INTERNAL_TOKEN:?Set AUTOFORGE_INTERNAL_TOKEN in .env}

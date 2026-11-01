@@ -37,3 +37,6 @@ filtered_scan_results.json
 /DEMO_AST_PIPELINE_SIMPLE.py
 /TEST_AST_PIPELINE_INTEGRATION.ps1
 /TEST_AST_PIPELINE_INTEGRATION.py
+.env
+
+.env

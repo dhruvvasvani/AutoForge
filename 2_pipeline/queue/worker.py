@@ -55,7 +55,7 @@ REDIS_PORT = int(_env("REDIS_PORT", "6379"))
 
 AST_SERVICE_URL = _env("AST_SERVICE_URL", "http://localhost:8001").rstrip("/")  # "" = disabled
 BACKEND_URL = _env("BACKEND_URL", "http://localhost:8080").rstrip("/")
-# Backend InternalApiTokenFilter: header X-AutoForge-Internal-Token, must equal backend `autoforge.internal-token`.
+# Backend InternalApiTokenFilter: header X-Internal-Api-Key, must equal backend `autoforge.internal-token`.
 # Same env name as 2_pipeline/client.py (AUTOFORGE_INTERNAL_SCAN_TOKEN); AUTOFORGE_INTERNAL_SECRET kept as alias.
 INTERNAL_TOKEN = os.environ.get("AUTOFORGE_INTERNAL_SCAN_TOKEN") or _env("INTERNAL_SECRET", "")
 AI_FIX_URL = _env("AI_FIX_URL", "http://localhost:5050").rstrip("/")
@@ -170,7 +170,7 @@ class ScanWorker:
                 response = requests.post(
                     f"{BACKEND_URL}/api/internal/scans/{scan_id}/progress",
                     json={"stage": stage, "status": status, "message": message},
-                    headers={"X-AutoForge-Internal-Token": INTERNAL_TOKEN},
+                    headers={"X-Internal-Api-Key": INTERNAL_TOKEN},
                     timeout=5,
                 )
                 response.raise_for_status()
@@ -590,7 +590,7 @@ class ScanWorker:
         }
         if not INTERNAL_TOKEN:
             logger.warning("AUTOFORGE_INTERNAL_SCAN_TOKEN not set - backend will answer 401")
-        headers = {"X-AutoForge-Internal-Token": INTERNAL_TOKEN} if INTERNAL_TOKEN else {}
+        headers = {"X-Internal-Api-Key": INTERNAL_TOKEN} if INTERNAL_TOKEN else {}
         try:
             r = requests.post(f"{BACKEND_URL}/api/internal/scans/{scan_id}/results",
                               json=payload, headers=headers, timeout=60)
