@@ -136,6 +136,26 @@ def _cpg_predictions(
         }
 
 
+def _include_cpg_file_scores(
+    predictions: dict[str, float],
+    model_status: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        **model_status,
+        "task": "vulnerability_likelihood",
+        "prediction_unit": "file",
+        "evaluation_status": "not_independently_validated",
+        "file_scores": [
+            {"file": file_path, "vulnerability_confidence": confidence}
+            for file_path, confidence in sorted(predictions.items())
+        ],
+        "interpretation": (
+            "Experimental file-level vulnerability signal. It is not a finding "
+            "verdict and does not change finding severity or the policy gate."
+        ),
+    }
+
+
 def _record_findings_metrics(findings: list[dict[str, Any]]) -> None:
     supported = [
         finding
@@ -478,6 +498,7 @@ def analyze_scanner_findings(request: AnalyzeFindingsRequest) -> dict[str, Any]:
         raise HTTPException(status_code=422, detail=f"AST analysis failed: {error}") from error
 
     predictions, model_status = _cpg_predictions(python_sources)
+    model_status = _include_cpg_file_scores(predictions, model_status)
     tagged_findings = reachability["tagged_findings"]
     for finding in tagged_findings:
         confidence = predictions.get(finding.get("file"))
@@ -584,6 +605,7 @@ def _analyze_source(
     }
     if language == "python" and include_cpg:
         predictions, model_status = _cpg_predictions({file_path: request.source})
+        model_status = _include_cpg_file_scores(predictions, model_status)
         confidence = predictions.get(file_path)
         if confidence is not None:
             for finding in scored_findings:
@@ -760,6 +782,9 @@ def analyze_project(request: ProjectAnalyzeRequest) -> dict[str, Any]:
                 reachability_details = {
                     "status": reachability_status,
                     "reachable_functions": reachability["reachable_functions"],
+                    "entry_points": reachability["entry_points"],
+                    "method": reachability["method"],
+                    "limitations": reachability["limitations"],
                     "missing_entry_points": reachability["missing_entry_points"],
                 }
             except (OSError, SyntaxError, ValueError) as error:
@@ -787,6 +812,7 @@ def analyze_project(request: ProjectAnalyzeRequest) -> dict[str, Any]:
 
     python_sources = dict(valid_python_files)
     cpg_predictions, model_status = _cpg_predictions(python_sources)
+    model_status = _include_cpg_file_scores(cpg_predictions, model_status)
     for finding in unified_findings:
         confidence = cpg_predictions.get(finding.get("file"))
         if confidence is not None:

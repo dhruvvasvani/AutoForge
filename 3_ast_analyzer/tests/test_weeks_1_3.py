@@ -155,7 +155,12 @@ def test_week3_reachability_links_entry_point_to_cross_file_callee(tmp_path):
     assert "service.routes.main" in result["reachable_functions"]
     assert "service.handlers.process" in result["reachable_functions"]
     assert result["tagged_findings"][0]["reachability"] == "REACHABLE_CODE"
+    assert result["tagged_findings"][0]["reachability_evidence"]["call_path"] == [
+        "service.routes.main",
+        "service.handlers.process",
+    ]
     assert result["tagged_findings"][1]["reachability"] == "UNREACHABLE_NOISE"
+    assert result["tagged_findings"][1]["reachability_evidence"]["call_path"] is None
 
 
 def test_week3_reachability_uses_http_route_decorators_as_entry_points(tmp_path):
@@ -226,3 +231,22 @@ def test_week3_unresolved_findings_remain_unknown(tmp_path, finding):
     result = ReachabilityAnalyzer(["main"]).analyze_project(tmp_path, [finding])
 
     assert result["tagged_findings"][0]["reachability"] == "UNKNOWN"
+
+
+def test_week3_no_recognized_entry_points_does_not_label_functions_unreachable(tmp_path):
+    (tmp_path / "app.py").write_text(
+        "def helper():\n"
+        "    return 1\n",
+        encoding="utf-8",
+    )
+
+    result = ReachabilityAnalyzer(["main"]).analyze_project(
+        tmp_path,
+        [{"function": "app.helper", "rule_id": "unmapped-entry"}],
+    )
+
+    finding = result["tagged_findings"][0]
+    assert result["entry_points"] == []
+    assert finding["reachability"] == "UNKNOWN"
+    assert finding["reachability_evidence"]["call_path"] is None
+    assert "No configured or recognized entry point" in finding["reachability_evidence"]["reason"]

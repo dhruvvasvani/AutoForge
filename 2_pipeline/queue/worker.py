@@ -20,6 +20,7 @@ Config comes from environment variables (all prefixed AUTOFORGE_), see CONFIG be
 import argparse
 import json
 import logging
+import math
 import os
 import re
 import shutil
@@ -565,10 +566,7 @@ class ScanWorker:
 
     # ----------------------------------------------------------- backend
     def post_to_backend(self, job, scan_id, ast):
-        """POST /api/internal/scans/{id}/results (current DTO: repoFullName, commitSha, semgrep[], checkov[]).
-        Extra fields (reachability/priority/ai_fix/tagged_findings) are ignored by the backend until
-        the Week 9 payload is agreed. Needs the numeric backend scan id; test jobs with UUIDs are skipped.
-        """
+        """POST normalized findings to the backend; requires a numeric backend scan id."""
         if not str(scan_id).isdigit():
             logger.info("scan_id %s is not a backend scan id - skipping backend POST", scan_id)
             return False
@@ -576,11 +574,21 @@ class ScanWorker:
         def item(f):
             extra = {"severity": f.get("severity"), "message": f.get("message"),
                      "priority": f.get("priority"), "reachability": f.get("reachability")}
-            # backend ScanService.toVulnerability reads extra.reachable (boolean) + extra.combined_risk_score
+            # Keep analyzer metadata in extra so the backend can persist it with the finding.
             if f.get("reachability") in ("REACHABLE_CODE", "UNREACHABLE_NOISE"):
                 extra["reachable"] = f["reachability"] == "REACHABLE_CODE"
             if isinstance(f.get("combined_risk_score"), (int, float)):
                 extra["combined_risk_score"] = f["combined_risk_score"]
+            confidence = f.get("cpg_gnn_file_confidence")
+            if confidence is not None:
+                if (
+                    isinstance(confidence, bool)
+                    or not isinstance(confidence, (int, float))
+                    or not math.isfinite(confidence)
+                    or not 0.0 <= confidence <= 1.0
+                ):
+                    raise ValueError("cpg_gnn_file_confidence must be between 0 and 1")
+                extra["cpg_gnn_file_confidence"] = float(confidence)
             return {
                 "check_id": f.get("rule_id"),
                 "path": f.get("file"),

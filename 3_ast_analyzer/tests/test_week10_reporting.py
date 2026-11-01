@@ -87,7 +87,7 @@ def test_metrics_aggregate_coverage_noise_severity_and_file_hotspots():
 
     assert metrics["scan_timestamp"] == "2026-01-02T00:00:00+00:00"
     assert metrics["ast_coverage_pct"] == 75
-    assert metrics["noise_reduction_pct"] == pytest.approx(66.67)
+    assert metrics["noise_reduction_pct"] == pytest.approx(33.33)
     assert metrics["unreachable_noise_pct"] == pytest.approx(33.33)
     assert metrics["reachability"] == {
         "REACHABLE_CODE": 1,

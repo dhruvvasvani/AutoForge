@@ -41,6 +41,7 @@ def test_backend_payload_contains_reachability_tagged_ast_findings(monkeypatch):
         "source": "semgrep",
         "reachability": "REACHABLE_CODE",
         "combined_risk_score": 8.5,
+        "cpg_gnn_file_confidence": 0.73,
         "priority": "P1",
     }
 
@@ -57,6 +58,7 @@ def test_backend_payload_contains_reachability_tagged_ast_findings(monkeypatch):
     assert payload["tagged_findings"][0]["source"] == "semgrep"
     assert payload["tagged_findings"][0]["extra"]["reachable"] is True
     assert payload["tagged_findings"][0]["extra"]["combined_risk_score"] == 8.5
+    assert payload["tagged_findings"][0]["extra"]["cpg_gnn_file_confidence"] == 0.73
     assert payload["ast"] == payload["tagged_findings"]
     assert submitted["url"] == "http://backend/api/internal/scans/42/results"
 

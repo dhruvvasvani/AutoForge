@@ -128,6 +128,14 @@ def test_sarif_reporter_generates_sarif_21_with_cwe_and_remediation(tmp_path):
             "sink_distance": 1,
             "ml_confidence": 0.95,
             "code_snippet": "cursor.execute(query)",
+            "reachability": "REACHABLE_CODE",
+            "reachability_method": "STATIC_CALL_GRAPH",
+            "reachability_evidence": {
+                "reason": "A static path reaches this function.",
+                "entry_points": ["src.routes.main"],
+                "call_path": ["src.routes.main", "src.routes.query"],
+            },
+            "cpg_gnn_file_confidence": 0.73,
         }
     )
     report_path = SARIFReporter.generate(
@@ -152,6 +160,12 @@ def test_sarif_reporter_generates_sarif_21_with_cwe_and_remediation(tmp_path):
     assert result["properties"]["cwe"] == "CWE-89"
     assert result["properties"]["combinedRiskScore"] == 7.7
     assert result["properties"]["mlConfidence"] == 0.95
+    assert result["properties"]["reachabilityMethod"] == "STATIC_CALL_GRAPH"
+    assert result["properties"]["reachabilityEvidence"]["call_path"] == [
+        "src.routes.main",
+        "src.routes.query",
+    ]
+    assert result["properties"]["cpgGnnFileConfidence"] == 0.73
     assert location["artifactLocation"]["uri"] == "src/routes.py"
     assert location["region"]["startLine"] == 14
     assert location["region"]["snippet"]["text"] == "cursor.execute(query)"

@@ -111,6 +111,13 @@ def test_single_python_scan_reports_optional_cpg_inference(monkeypatch):
     )
 
     assert result["model"]["available"] is True
+    assert result["model"]["task"] == "vulnerability_likelihood"
+    assert result["model"]["prediction_unit"] == "file"
+    assert result["model"]["evaluation_status"] == "not_independently_validated"
+    assert result["model"]["file_scores"] == [{
+        "file": "src/handler.py",
+        "vulnerability_confidence": 0.73,
+    }]
     assert result["findings"][0]["cpg_gnn_file_confidence"] == 0.73
 
 
@@ -132,4 +139,43 @@ def test_optional_cpg_failure_does_not_fail_ast_scan(monkeypatch):
     assert result["model"]["available"] is False
     assert result["model"]["status"] == "failed"
     assert "checkpoint is missing" in result["model"]["reason"]
+    assert result["model"]["file_scores"] == []
     assert result["summary"]["finding_count"] == 0
+
+
+def test_project_scan_exposes_file_level_cpg_score_without_findings(monkeypatch):
+    monkeypatch.setattr(
+        dashboard_api,
+        "_run_project_scanners",
+        lambda _root: (
+            {"semgrep": {"status": "complete", "finding_count": 0},
+             "checkov": {"status": "complete", "finding_count": 0}},
+            [],
+        ),
+    )
+    monkeypatch.setattr(
+        dashboard_api,
+        "_cpg_predictions",
+        lambda sources: (
+            {"safe.py": 0.27},
+            {"name": "CPG GNN", "available": True, "status": "complete"},
+        ),
+    )
+
+    result = dashboard_api.analyze_project(
+        dashboard_api.ProjectAnalyzeRequest(
+            files=[
+                dashboard_api.ProjectFile(
+                    file_path="safe.py",
+                    source="def main():\n    return 1\n",
+                ),
+            ],
+        )
+    )
+
+    assert result["findings"] == []
+    assert result["model"]["file_scores"] == [{
+        "file": "safe.py",
+        "vulnerability_confidence": 0.27,
+    }]
+    assert result["policy_gate"]["passed"] is True

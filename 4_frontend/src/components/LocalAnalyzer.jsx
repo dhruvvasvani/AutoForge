@@ -713,6 +713,49 @@ const LocalAnalyzer = () => {
     );
   };
 
+  const downloadFullResults = () => {
+    const report = {
+      format: 'autoforge-scan-results',
+      format_version: 1,
+      generated_at: new Date().toISOString(),
+      analysis_mode: 'static',
+      summary: aiFixBrief.summary,
+      files: scanResults.map((item) => ({
+        file: item.filePath,
+        status: item.status || (item.error ? 'failed' : 'unknown'),
+        language: item.result?.language || null,
+        checks_run: item.result?.checks_run || [],
+        error: item.error || null,
+      })),
+      scanners: scannerStatus || {},
+      reachability: reachabilityStatus || { status: 'not_available' },
+      runtime_evidence: { status: 'not_collected' },
+      policy_gate: projectPolicyGate,
+      model: modelStatus,
+      metrics: scanMetrics,
+      findings: allFindings.map((finding) => ({
+        ...finding,
+        risk_score: finding.combined_risk_score ?? finding.final_score ?? null,
+        risk_score_status: (
+          finding.combined_risk_score != null || finding.final_score != null
+            ? 'available'
+            : 'not_provided_by_source'
+        ),
+      })),
+      limitations: [
+        'Reachability is based on static call-graph analysis, not observed live execution.',
+        'UNREACHABLE_NOISE means no path was found in the static graph; unresolved dynamic calls may exist.',
+        'Unknown and scanner-only language findings do not receive equivalent Python AST taint analysis.',
+        'CPG-GNN output is file-level informational confidence, not a per-finding vulnerability probability.',
+        'A missing risk score means the finding source did not provide a calibrated numeric score.',
+      ],
+    };
+    triggerDownload(
+      new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' }),
+      'autoforge-scan-results.json',
+    );
+  };
+
   const copyAiFixPrompt = async () => {
     try {
       await navigator.clipboard.writeText(aiFixPrompt);
@@ -873,6 +916,9 @@ const LocalAnalyzer = () => {
         <div className="analyzer-file-list" aria-label="Files selected for analysis">
           {files.map((file) => {
             const status = scanResults.find((item) => item.id === file.id);
+            const modelFileScore = modelStatus?.file_scores?.find(
+              (item) => normalizeFilePath(item.file) === normalizeFilePath(file.filePath),
+            );
             return (
               <div className="analyzer-file-row" key={file.id}>
                 <button
@@ -893,6 +939,12 @@ const LocalAnalyzer = () => {
                         : status?.status === 'scanner_only'
                           ? 'Static scanners only'
                           : 'Ready'}
+                    {modelFileScore && (
+                      <span>
+                        {' · '}CPG-GNN vulnerability signal{' '}
+                        {(modelFileScore.vulnerability_confidence * 100).toFixed(1)}% · experimental
+                      </span>
+                    )}
                   </span>
                 </button>
                 <button type="button" aria-label={`Remove ${file.filePath}`} onClick={() => removeFile(file.id)} disabled={busy}>Remove</button>
@@ -905,7 +957,7 @@ const LocalAnalyzer = () => {
           <strong>Enabled project checks</strong>
           <p>Python files get AST, taint/CFG, and cross-file reachability; supported JS/TS, Java, Go, Rust, and SQL files get parser checks. Semgrep p/default scans for security patterns and Checkov checks infrastructure. Some formats (such as HTML, CSS, and config files) are scanner-only, not AST-parsed. Static checks do not execute uploaded source.</p>
           <p>{modelStatus?.available
-            ? `CPG-GNN file-level inference is active (${modelStatus.model_name || 'configured encoder'}); scores are informational, not finding verdicts.`
+            ? `Experimental CPG-GNN file-level vulnerability signal is active (${modelStatus.model_name || 'configured encoder'}); it is not independently validated and does not change finding severity or the policy gate.`
             : 'CPG-GNN inference needs CPG_GNN_CHECKPOINT and locally available CodeBERT weights. Private GitHub repositories are not fetched by this local-folder workflow.'}</p>
         </div>
         <div className="analyzer-action-row">
@@ -973,7 +1025,8 @@ const LocalAnalyzer = () => {
               </div>
               <div className="analyzer-model-status">
                 <strong>Reachability</strong>
-                <span>{reachabilityCounts.reachable} reachable · {reachabilityCounts.unreachable} unreachable · {reachabilityCounts.unverified} unverified</span>
+                <span>{reachabilityCounts.reachable} static paths · {reachabilityCounts.unreachable} no static path · {reachabilityCounts.unverified} unknown</span>
+                <small>Static call-graph estimate; live execution is not collected.</small>
               </div>
               <div className="analyzer-summary__counts">
                 <strong>{allFindings.length}</strong><span>total findings</span>
@@ -983,6 +1036,7 @@ const LocalAnalyzer = () => {
                 <span>{modelStatus?.available ? 'Available' : 'Unavailable'}</span>
               </div>
               <button type="button" className="analyzer-secondary-button" onClick={downloadSummary}>Download AI-fix brief</button>
+              <button type="button" className="analyzer-secondary-button" onClick={downloadFullResults}>Download full JSON results</button>
               <button type="button" className="analyzer-secondary-button" onClick={downloadSarif} disabled={!successes.length}>Download SARIF</button>
               <button
                 type="button"
@@ -1007,8 +1061,8 @@ const LocalAnalyzer = () => {
                 <div className="analyzer-analytics__metrics">
                   <article>
                     <strong>{scanMetrics.noise_reduction_pct}%</strong>
-                    <span>Noise reduction</span>
-                    <small>Non-reachable or unverified findings as a share of all findings</small>
+                    <span>Static no-path share</span>
+                    <small>Findings with no path in the static graph; unknown findings are not counted</small>
                   </article>
                   <article>
                     <strong>{scanMetrics.ast_coverage_pct}%</strong>
@@ -1127,6 +1181,21 @@ const LocalAnalyzer = () => {
                           <strong>{finding.rule_id || 'Finding'}</strong>
                           <span>{finding.severity || 'Unrated'} · {finding.file || 'unknown file'}:{finding.line || '?'}</span>
                           <p>{finding.message || 'No description provided.'}</p>
+                          {Number.isFinite(finding.cpg_gnn_file_confidence) && (
+                            <small>
+                              Experimental file-level CPG-GNN vulnerability signal:{' '}
+                              {(finding.cpg_gnn_file_confidence * 100).toFixed(1)}%.
+                              {' '}This does not change this finding&apos;s severity or policy result.
+                            </small>
+                          )}
+                          {finding.reachability_evidence && (
+                            <small>
+                              {finding.reachability}: {finding.reachability_evidence.reason}
+                              {finding.reachability_evidence.call_path?.length > 0
+                                ? ` Path: ${finding.reachability_evidence.call_path.join(' → ')}`
+                                : ''}
+                            </small>
+                          )}
                         </div>
                         {savedLabel ? (
                           <span role="status">Feedback submitted: {savedLabel.replaceAll('_', ' ')}</span>

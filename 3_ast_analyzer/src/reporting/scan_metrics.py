@@ -62,7 +62,9 @@ def build_scan_metrics(
     total = len(findings)
     reachable = reachability["REACHABLE_CODE"]
     analyzed_coverage = files_analyzed / files_received * 100 if files_received else 100.0
-    noise_reduction = (total - reachable) / total * 100 if total else 0.0
+    noise_reduction = (
+        reachability["UNREACHABLE_NOISE"] / total * 100 if total else 0.0
+    )
     unreachable_rate = reachability["UNREACHABLE_NOISE"] / total * 100 if total else 0.0
     scan_time = timestamp or datetime.now(timezone.utc)
     if scan_time.tzinfo is None:

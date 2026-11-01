@@ -157,6 +157,11 @@ function RepositoryScanProgress({ repository }) {
                     {finding.priority ? ` · ${finding.priority}` : ''}
                     {finding.sourceScanner ? ` · ${finding.sourceScanner}` : ''}
                   </small>
+                  {Number.isFinite(finding.cpgGnnFileConfidence) && (
+                    <small>
+                      CPG-GNN file confidence: {(finding.cpgGnnFileConfidence * 100).toFixed(1)}% (informational)
+                    </small>
+                  )}
                   {finding.description && <p>{finding.description}</p>}
                 </li>
               ))}

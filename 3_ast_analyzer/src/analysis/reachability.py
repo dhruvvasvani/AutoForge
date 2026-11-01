@@ -46,16 +46,21 @@ class ReachabilityAnalyzer:
         )
         reachable = set(matched_entries)
         pending = deque(matched_entries)
+        predecessor: dict[str, str | None] = {
+            entry: None for entry in matched_entries
+        }
         while pending:
             caller = pending.popleft()
             for callee in call_graph.get(caller, ()):
                 if callee in call_graph and callee not in reachable:
                     reachable.add(callee)
+                    predecessor[callee] = caller
                     pending.append(callee)
 
         tagged = []
         for finding in findings:
             tagged_finding = dict(finding)
+            tagged_finding["reachability_method"] = "STATIC_CALL_GRAPH"
             file_path = (
                 tagged_finding.get("file")
                 or tagged_finding.get("path")
@@ -64,8 +69,14 @@ class ReachabilityAnalyzer:
             if isinstance(file_path, str) and Path(file_path).suffix.lower() != ".py":
                 tagged_finding["function"] = None
                 tagged_finding["reachability"] = "UNKNOWN"
+                tagged_finding["reachability_evidence"] = {
+                    "reason": "This finding is outside Python call-graph analysis.",
+                    "entry_points": sorted(matched_entries),
+                    "call_path": None,
+                }
                 tagged.append(tagged_finding)
                 continue
+
             function = (
                 tagged_finding.get("function")
                 or tagged_finding.get("function_name")
@@ -79,15 +90,58 @@ class ReachabilityAnalyzer:
             tagged_finding["function"] = function
             if target is None:
                 tagged_finding["reachability"] = "UNKNOWN"
-            else:
-                tagged_finding["reachability"] = (
-                    "REACHABLE_CODE" if target in reachable else "UNREACHABLE_NOISE"
+                reason = (
+                    "No configured or recognized entry point was found."
+                    if not matched_entries
+                    else "The finding could not be mapped to a function in the call graph."
                 )
+                tagged_finding["reachability_evidence"] = {
+                    "reason": reason,
+                    "entry_points": sorted(matched_entries),
+                    "call_path": None,
+                }
+            elif not matched_entries:
+                tagged_finding["reachability"] = "UNKNOWN"
+                tagged_finding["reachability_evidence"] = {
+                    "reason": "No configured or recognized entry point was found.",
+                    "entry_points": [],
+                    "call_path": None,
+                }
+            else:
+                if target in reachable:
+                    path: list[str] = []
+                    current: str | None = target
+                    while current is not None:
+                        path.append(current)
+                        current = predecessor[current]
+                    path.reverse()
+                    tagged_finding["reachability"] = "REACHABLE_CODE"
+                    tagged_finding["reachability_evidence"] = {
+                        "reason": "A static call path connects a recognized entry point to this function.",
+                        "entry_points": sorted(matched_entries),
+                        "call_path": path,
+                    }
+                else:
+                    tagged_finding["reachability"] = "UNREACHABLE_NOISE"
+                    tagged_finding["reachability_evidence"] = {
+                        "reason": (
+                            "No path was found in the static call graph. This is not "
+                            "proof of runtime unreachability; dynamic calls may be unresolved."
+                        ),
+                        "entry_points": sorted(matched_entries),
+                        "call_path": None,
+                    }
             tagged.append(tagged_finding)
 
         return {
             "call_graph": {name: sorted(callees) for name, callees in call_graph.items()},
             "reachable_functions": sorted(reachable),
+            "entry_points": sorted(matched_entries),
+            "method": "STATIC_CALL_GRAPH",
+            "limitations": [
+                "Static call resolution may miss dynamic dispatch, reflection, callbacks, and runtime-generated calls.",
+                "UNREACHABLE_NOISE means no path was found in this static graph; it is not runtime proof of dead code.",
+            ],
             "missing_entry_points": [
                 entry for entry in self.entry_points
                 if not any(name.endswith(f".{entry}") or name == entry for name in call_graph)

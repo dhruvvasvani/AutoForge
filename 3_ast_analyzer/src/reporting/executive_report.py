@@ -63,12 +63,12 @@ th,td{{text-align:left;padding:9px;border-bottom:1px solid #dbe2ea;vertical-alig
 <span>AST coverage: {float(metrics.get('ast_coverage_pct', 0)):.2f}%</span>
 <span>Reachable: {int(metrics.get('reachable_findings', 0))}</span>
 <span>Unreachable noise: {int(metrics.get('unreachable_findings', 0))}</span>
-<span>Noise reduction: {float(metrics.get('noise_reduction_pct', 0)):.2f}%</span>
+<span>Static no-path share: {float(metrics.get('noise_reduction_pct', 0)):.2f}%</span>
 </section>
 <h2>Findings</h2>
 <table><thead><tr><th>Severity</th><th>Reachability</th><th>File</th><th>Line</th><th>Rule</th><th>Finding</th></tr></thead>
 <tbody>{finding_rows}</tbody></table>
-<p class="muted">Reachability is an analyzer estimate. Review findings and AI-generated suggestions before applying remediation.</p>
+<p class="muted">Reachability is a static call-graph estimate, not live execution proof. A missing graph path may reflect unresolved dynamic calls. Review findings and AI-generated suggestions before applying remediation.</p>
 </body>
 </html>"""
 
@@ -114,7 +114,7 @@ def build_pdf_report(
             f" &nbsp; | &nbsp; AST coverage: {float(metrics.get('ast_coverage_pct', 0)):.2f}%"
             f" &nbsp; | &nbsp; Reachable findings: {int(metrics.get('reachable_findings', 0))}"
             f" &nbsp; | &nbsp; Unreachable noise: {int(metrics.get('unreachable_findings', 0))}"
-            f" &nbsp; | &nbsp; Noise reduction: {float(metrics.get('noise_reduction_pct', 0)):.2f}%",
+            f" &nbsp; | &nbsp; Static no-path share: {float(metrics.get('noise_reduction_pct', 0)):.2f}%",
             body,
         ),
         Spacer(1, 0.18 * inch),

@@ -43,8 +43,12 @@ Non-Python security checks depend on Semgrep's `p/default` rules, while Checkov
 checks infrastructure configuration; a completed scan with zero findings is
 not a guarantee that a project is vulnerability-free. Python reachability starts
 from configured function names and common HTTP route
-decorators; unresolved findings remain unverified instead of being treated as
-dead code.
+decorators. Findings include the static call path when one is found. If there
+is no recognized entry point, findings remain `UNKNOWN`; when a recognized
+entry point exists but no graph path is found, `UNREACHABLE_NOISE` describes
+only the static graph result and is not proof of runtime dead code. Dynamic
+dispatch, reflection, callbacks, and runtime-generated calls may be unresolved.
+The analyzer does not collect live execution traces.
 Some accepted project files, including HTML, CSS, and configuration formats,
 are scanner-only and are not represented in the AST coverage count.
 Optional CPG-GNN
@@ -57,6 +61,10 @@ The dashboard's AI-fix handoff exports the actual scan findings and bounded
 source excerpts as JSON, or copies a prompt for an external coding assistant.
 It does not call an AI service or edit project files. The GitHub pipeline's
 separate AI-fix integration is disabled in the default Compose configuration.
+The dashboard also offers a full scan-results JSON export, including finding
+source, available numeric score (or an explicit unavailable status), static
+reachability evidence, scanner/model status, and limitations. It is an
+on-demand browser download, not a server-written `final_scored_results.json`.
 Project-scan clients may provide an expected SHA-256 digest per source file;
 the analyzer rejects mismatches and reports missing digests as unverified.
 This digest check is not a signature or source-authentication mechanism.
@@ -90,8 +98,33 @@ To enable CPG-GNN inference, Place your compatible checkpoint under `3_ast_analy
 `3_ast_analyzer/src/ml` at `/models/checkpoints` and the local CodeBERT files
 at `/models/codebert-base`. The checkpoint must be present on the host. Model
 load failures are reported in the scan's `model` status while non-ML AST
-analysis continues. Confidence is file-level telemetry, not a vulnerability
-verdict.
+analysis continues. The response exposes per-file vulnerability confidence in
+`model.file_scores`; Python findings for that file also include
+`cpg_gnn_file_confidence`, which is exported to SARIF as
+`cpgGnnFileConfidence`. This is an experimental, file-level signal, is not
+independently validated, and does not alter finding severity or the policy gate.
+The existing checkpoint's prior evaluation reused official test examples, so
+its reported metrics are exploratory and must not be used as quality claims.
+The dashboard displays the signal beside each analyzed file when inference is
+enabled.
+
+For local Compose use, set these values in the repository-root `.env` and
+recreate the analyzer service:
+
+```dotenv
+CPG_GNN_CHECKPOINT=/models/checkpoints/cpg_gnn_full_10epoch.pt
+CPG_GNN_MODEL_NAME=/models/codebert-base
+```
+
+```powershell
+docker compose up -d --build analyzer-api
+docker compose logs -f analyzer-api
+```
+
+The scan API's `model.file_scores` lists each Python file's
+`vulnerability_confidence`; scores are also attached to findings for that file
+and included in SARIF. Keep the model out of blocking decisions until an
+independent held-out evaluation has been completed.
 
 The analyzer service does not maintain its own Redis queue: requests from
 automated repository scans are made by the pipeline worker after it dequeues a

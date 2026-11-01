@@ -91,11 +91,21 @@ class SARIFReporter:
                 properties["remediationExample"] = remediation_example
             if "ml_confidence" in finding:
                 properties["mlConfidence"] = cls._confidence(finding["ml_confidence"], index)
+            if "cpg_gnn_file_confidence" in finding:
+                properties["cpgGnnFileConfidence"] = cls._confidence(
+                    finding["cpg_gnn_file_confidence"], index
+                )
             if "sink_distance" in finding:
                 properties["sinkDistance"] = cls._distance(finding["sink_distance"], index)
             reachability = finding.get("reachability")
             if isinstance(reachability, str) and reachability:
                 properties["reachability"] = reachability
+            reachability_method = finding.get("reachability_method")
+            if isinstance(reachability_method, str) and reachability_method:
+                properties["reachabilityMethod"] = reachability_method
+            reachability_evidence = finding.get("reachability_evidence")
+            if isinstance(reachability_evidence, Mapping):
+                properties["reachabilityEvidence"] = dict(reachability_evidence)
 
             results.append(
                 {
