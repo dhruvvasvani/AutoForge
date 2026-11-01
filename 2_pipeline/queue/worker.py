@@ -55,11 +55,12 @@ REDIS_PORT = int(_env("REDIS_PORT", "6379"))
 
 AST_SERVICE_URL = _env("AST_SERVICE_URL", "http://localhost:8001").rstrip("/")  # "" = disabled
 BACKEND_URL = _env("BACKEND_URL", "http://localhost:8080").rstrip("/")
-# Backend InternalApiTokenFilter: header X-Internal-Api-Key, must equal backend `autoforge.internal-token`.
+# Backend InternalApiKeyFilter: header X-Internal-Api-Key, must equal backend `internal.api.key` (env INTERNAL_API_KEY).
 # Same env name as 2_pipeline/client.py (AUTOFORGE_INTERNAL_SCAN_TOKEN); AUTOFORGE_INTERNAL_SECRET kept as alias.
 INTERNAL_TOKEN = os.environ.get("AUTOFORGE_INTERNAL_SCAN_TOKEN") or _env("INTERNAL_SECRET", "")
 AI_FIX_URL = _env("AI_FIX_URL", "http://localhost:5050").rstrip("/")
 AI_FIX_ENABLED = _env("AI_FIX_ENABLED", "true").lower() == "true"
+PROGRESS_POST_ENABLED = _env("PROGRESS_POST", "false").lower() == "true"
 MAX_FIXES_PER_SCAN = int(_env("MAX_FIXES", "3"))
 
 CLONE_TIMEOUT = int(_env("CLONE_TIMEOUT", "300"))
@@ -165,7 +166,7 @@ class ScanWorker:
             self.redis_client.publish(EVENTS_CHANNEL, json.dumps(event))
         except Exception as e:
             logger.warning("Could not publish scan progress event: %s", e)
-        if str(scan_id).isdigit() and BACKEND_URL and INTERNAL_TOKEN:
+        if PROGRESS_POST_ENABLED and str(scan_id).isdigit() and BACKEND_URL and INTERNAL_TOKEN:
             try:
                 response = requests.post(
                     f"{BACKEND_URL}/api/internal/scans/{scan_id}/progress",
