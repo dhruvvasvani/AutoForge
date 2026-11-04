@@ -10,6 +10,7 @@ import com.autoforge.entity.Scan;
 import com.autoforge.entity.ScanStatus;
 import com.autoforge.repository.*;
 import com.autoforge.service.QueueService;
+import com.autoforge.service.RemediationService;
 import com.autoforge.service.ScanExecutionService;
 import com.autoforge.service.ScanService;
 import org.junit.jupiter.api.BeforeEach;
@@ -51,6 +52,9 @@ public class ScanLifecycleAndControllerUnitTest {
     private QueueService queueService;
     @Mock
     private AstMetricsRepository astMetricsRepository;
+
+    @Mock
+    private RemediationService remediationService;
     @Mock
     private ScanExecutionService scanExecutionService;
 
@@ -70,6 +74,7 @@ public class ScanLifecycleAndControllerUnitTest {
                 mlPredictionRepository,
                 queueService,
                 astMetricsRepository
+                ,remediationService
         );
         scanController = new ScanController(scanService, scanExecutionService);
     }

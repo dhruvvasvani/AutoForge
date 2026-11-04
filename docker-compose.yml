@@ -51,8 +51,14 @@ services:
       SPRING_DATASOURCE_USERNAME: autoforge
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
       REDIS_HOST: redis
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: "6379"
       AUTOFORGE_INTERNAL_TOKEN: ${AUTOFORGE_INTERNAL_TOKEN:?Set AUTOFORGE_INTERNAL_TOKEN in .env}
       AUTOFORGE_JWT_SECRET: ${AUTOFORGE_JWT_SECRET:?Set AUTOFORGE_JWT_SECRET in .env}
+      AUTOFORGE_JWT_EXPIRATION_MS: "86400000"
+      AUTOFORGE_REMEDIATION_ENDPOINT: ${AUTOFORGE_REMEDIATION_ENDPOINT:-https://generativelanguage.googleapis.com/v1beta/openai/chat/completions}
+      AUTOFORGE_REMEDIATION_API_KEY: ${AUTOFORGE_REMEDIATION_API_KEY:-}
+      AUTOFORGE_REMEDIATION_MODEL: ${AUTOFORGE_REMEDIATION_MODEL:-gemini-2.5-flash}
     depends_on:
       postgres:
         condition: service_healthy
@@ -77,7 +83,6 @@ services:
       - analyzer-data:/data
       - scan-workspace:/workspace:ro
       - ./3_ast_analyzer/models:/models:ro
-      - ./3_ast_analyzer/src/ml:/models/checkpoints:ro
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/readyz', timeout=3)"]
       interval: 30s
@@ -93,6 +98,8 @@ services:
     command: ["python", "queue/worker.py"]
     environment:
       AUTOFORGE_REDIS_HOST: redis
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: "6379"
       AUTOFORGE_REDIS_PORT: "6379"
       AUTOFORGE_AST_SERVICE_URL: http://analyzer-api:8090
       AUTOFORGE_BACKEND_URL: http://backend:8089

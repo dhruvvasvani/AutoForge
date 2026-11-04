@@ -40,7 +40,7 @@ public class LlmRemediationClient {
         }
         if (apiKey.isBlank() || model.isBlank() || endpoint.isBlank()) {
             throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE,
-                    "AI remediation is not configured. Set AUTOFORGE_LLM_API_KEY and AUTOFORGE_LLM_MODEL.");
+                    "AI remediation is not configured. Set AUTOFORGE_REMEDIATION_API_KEY and AUTOFORGE_REMEDIATION_MODEL.");
         }
         if (finding.getCodeSnippet() == null || finding.getCodeSnippet().isBlank()) {
             throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY,

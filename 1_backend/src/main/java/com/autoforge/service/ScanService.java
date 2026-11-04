@@ -32,6 +32,7 @@ public class ScanService {
     private final MLPredictionRepository mlPredictionRepository;
     private final QueueService queueService;
     private final AstMetricsRepository astMetricsRepository;
+    private final RemediationService remediationService;
 
     public Scan createScanJobFromPush(String repoFullName, String commitSha, String eventType) {
         return createScanJobFromPush(repoFullName, commitSha, eventType, "main", List.of());
@@ -179,7 +180,13 @@ public class ScanService {
             final String prio = defaultPriority;
             payload.getSemgrep().forEach(f -> {
                 vulnerabilityRepository.save(toVulnerability(scan, f, "SEMGREP", reach, prio));
-                findingRepository.save(toFinding(scan, f));
+                Finding savedFinding = findingRepository.save(toFinding(scan, f));
+                try {
+                    remediationService.generateAutomatically(savedFinding);
+                } catch (Exception ex) {
+                    log.warn("Automatic remediation failed for finding {}: {}",
+                            savedFinding.getId(), ex.getMessage());
+                }
             });
         }
         if (payload.getCheckov() != null) {
@@ -187,7 +194,13 @@ public class ScanService {
             final String prio = defaultPriority;
             payload.getCheckov().forEach(f -> {
                 vulnerabilityRepository.save(toVulnerability(scan, f, "CHECKOV", reach, prio));
-                findingRepository.save(toFinding(scan, f));
+                Finding savedFinding = findingRepository.save(toFinding(scan, f));
+                try {
+                    remediationService.generateAutomatically(savedFinding);
+                } catch (Exception ex) {
+                    log.warn("Automatic remediation failed for finding {}: {}",
+                            savedFinding.getId(), ex.getMessage());
+                }
             });
         }
 

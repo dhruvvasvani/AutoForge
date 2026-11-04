@@ -313,7 +313,7 @@ class ScanWorker:
             fixes = self.generate_fixes(source, actionable, scan_id)
 
             logger.info("STEP 6: results -> backend + Redis")
-            posted = self.post_to_backend(job, scan_id, ast)
+            posted = self.post_to_backend(job, scan_id, ast, source)
             self.emit(scan_id, "RESULTS_POSTED", status="OK" if posted else "SKIPPED")
 
             summary = {}
@@ -564,7 +564,7 @@ class ScanWorker:
         return done
 
     # ----------------------------------------------------------- backend
-    def post_to_backend(self, job, scan_id, ast):
+    def post_to_backend(self, job, scan_id, ast, source_root):
         """POST /api/internal/scans/{id}/results (current DTO: repoFullName, commitSha, semgrep[], checkov[]).
         Extra fields (reachability/priority/ai_fix/tagged_findings) are ignored by the backend until
         the Week 9 payload is agreed. Needs the numeric backend scan id; test jobs with UUIDs are skipped.
@@ -576,6 +576,11 @@ class ScanWorker:
         def item(f):
             extra = {"severity": f.get("severity"), "message": f.get("message"),
                      "priority": f.get("priority"), "reachability": f.get("reachability")}
+
+            # Include source context so the backend can generate a remediation patch.
+            code_snippet = self._snippet(source_root, f.get("file"), f.get("line"))
+            if code_snippet:
+                extra["lines"] = code_snippet
             # backend ScanService.toVulnerability reads extra.reachable (boolean) + extra.combined_risk_score
             if f.get("reachability") in ("REACHABLE_CODE", "UNREACHABLE_NOISE"):
                 extra["reachable"] = f["reachability"] == "REACHABLE_CODE"

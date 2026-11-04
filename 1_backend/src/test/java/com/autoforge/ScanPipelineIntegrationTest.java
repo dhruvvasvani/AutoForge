@@ -7,6 +7,7 @@ import com.autoforge.entity.*;
 import com.autoforge.repository.*;
 import com.autoforge.security.InternalApiKeyFilter;
 import com.autoforge.service.QueueService;
+import com.autoforge.service.RemediationService;
 import com.autoforge.service.ScanService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -41,16 +42,17 @@ class ScanPipelineIntegrationTest {
     private final MLPredictionRepository mlPredictionRepository = mock(MLPredictionRepository.class);
     private final QueueService queueService = mock(QueueService.class);
     private final AstMetricsRepository astMetricsRepository = mock(AstMetricsRepository.class);
+    private final RemediationService remediationService = mock(RemediationService.class);
     private final ScanService scanService = new ScanService(
             repositoryRepository, projectRepository, webhookEventRepository, scanRepository,
             vulnerabilityRepository, findingRepository, callTraceRepository, mlPredictionRepository,
-            queueService, astMetricsRepository);
+            queueService, astMetricsRepository, remediationService);
 
     @BeforeEach
     void resetMocks() {
         reset(repositoryRepository, projectRepository, webhookEventRepository, scanRepository,
                 vulnerabilityRepository, findingRepository, callTraceRepository, mlPredictionRepository,
-                queueService, astMetricsRepository);
+                queueService, astMetricsRepository, remediationService);
     }
 
     @Test

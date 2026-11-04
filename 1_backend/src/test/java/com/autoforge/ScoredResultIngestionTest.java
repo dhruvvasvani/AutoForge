@@ -6,6 +6,7 @@ import com.autoforge.entity.Scan;
 import com.autoforge.entity.ScanStatus;
 import com.autoforge.repository.*;
 import com.autoforge.service.QueueService;
+import com.autoforge.service.RemediationService;
 import com.autoforge.service.ScanService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -32,6 +33,7 @@ class ScoredResultIngestionTest {
     @Mock MLPredictionRepository mlPredictionRepository;
     @Mock QueueService queueService;
     @Mock AstMetricsRepository astMetricsRepository;
+    @Mock RemediationService remediationService;
 
     private Scan scan;
     private ScanService scanService;
@@ -51,7 +53,7 @@ class ScoredResultIngestionTest {
         lenient().when(scanRepository.save(any(Scan.class))).thenAnswer(invocation -> invocation.getArgument(0));
         scanService = new ScanService(repositoryRepository, projectRepository, webhookEventRepository, scanRepository,
                 vulnerabilityRepository, findingRepository, callTraceRepository, mlPredictionRepository,
-                queueService, astMetricsRepository);
+                queueService, astMetricsRepository, remediationService);
     }
 
     @Test
