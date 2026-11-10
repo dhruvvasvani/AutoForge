@@ -69,6 +69,38 @@ def test_local_scan_returns_graph_findings_policy_and_sarif():
     assert result["sarif"]["version"] == "2.1.0"
 
 
+def test_local_scan_does_not_flag_bound_sql_parameters_but_keeps_unsafe_sql():
+    safe_response = _post(
+        "/api/v1/analyze",
+        {
+            "file_path": "src/handler.py",
+            "source": (
+                "def handler():\n"
+                "    value = input()\n"
+                "    cursor.execute('SELECT * FROM users WHERE id = ?', (value,))\n"
+            ),
+        },
+    )
+    unsafe_response = _post(
+        "/api/v1/analyze",
+        {
+            "file_path": "src/unsafe_handler.py",
+            "source": (
+                "def handler():\n"
+                "    value = input()\n"
+                "    cursor.execute('SELECT * FROM users WHERE id = ' + value)\n"
+            ),
+        },
+    )
+
+    assert safe_response.status_code == 200
+    assert safe_response.json()["findings"] == []
+    assert unsafe_response.status_code == 200
+    assert [finding["rule_id"] for finding in unsafe_response.json()["findings"]] == [
+        "SQLI_RAW_CONCAT"
+    ]
+
+
 def test_project_scan_serializes_python_ellipsis_literals(monkeypatch):
     monkeypatch.setattr(
         dashboard_api,

@@ -308,6 +308,35 @@ def test_webhook_health_requires_worker_credentials_and_reports_queue(tmp_path, 
     assert response.json()["queue"] == {"pending": 0, "processing": 0, "completed": 0, "failed": 0}
 
 
+def test_webhook_accepts_any_connected_repository_when_no_allowlist_is_set(tmp_path, monkeypatch):
+    monkeypatch.setenv("GITHUB_TOKEN", "test-token")
+    app = create_webhook_app(
+        webhook_secret="test-secret",
+        database_path=str(tmp_path / "jobs.sqlite3"),
+    )
+    event_payload = {
+        "action": "opened",
+        "repository": {"full_name": "another-owner/repo"},
+        "pull_request": {
+            "number": 12,
+            "head": {"sha": "c" * 40},
+            "diff_url": "https://github.com/another-owner/repo/pull/12.diff",
+        },
+    }
+    body = json.dumps(event_payload).encode()
+
+    response = _post(
+        app,
+        "/api/v1/github/events",
+        body,
+        _signed_headers(body, "pull_request", "test-secret"),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "accepted"
+    assert app.state.job_queue.claim().event.repository == "another-owner/repo"
+
+
 def test_worker_scans_changed_python_and_reports_unhandled_language_files(tmp_path, monkeypatch):
     queue = SQLiteJobQueue(tmp_path / "jobs.sqlite3")
     worker = PullRequestWorker(

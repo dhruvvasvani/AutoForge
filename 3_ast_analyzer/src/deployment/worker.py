@@ -49,10 +49,12 @@ class PullRequestWorker:
         self.queue = queue
         self.token = token
         self.metrics = metrics or MetricsCollector()
-        configured_repository = repository or os.getenv("GITHUB_REPOSITORY")
-        if not configured_repository:
-            raise ValueError("GITHUB_REPOSITORY must be configured for the worker")
-        self.repository = configured_repository
+        configured_repositories = repository or os.getenv("GITHUB_REPOSITORIES") or os.getenv("GITHUB_REPOSITORY")
+        self.repositories = {
+            item.strip().casefold()
+            for item in (configured_repositories or "").split(",")
+            if item.strip()
+        }
         self.rule_tuner = rule_tuner or RuleTuner(
             feedback_path=os.getenv(
                 "FEEDBACK_PATH",
@@ -94,7 +96,7 @@ class PullRequestWorker:
 
     async def process(self, job: QueuedJob) -> None:
         event = job.event
-        if event.repository.casefold() != self.repository.casefold():
+        if self.repositories and event.repository.casefold() not in self.repositories:
             raise ValueError("queued webhook repository does not match configured repository")
         headers = {
             "Accept": "application/vnd.github+json",

@@ -1,25 +1,28 @@
-import { createContext, useState, useContext, useEffect } from 'react';
-import { authAPI } from '../api/client';
+import { useCallback, useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { authAPI, userAPI } from '../api/client';
+import { AuthContext } from './auth-context';
 
-const AuthContext = createContext();
+const getAuthErrorMessage = (error, fallback) => {
+  const responseData = error.response?.data;
+  const responseMessage = responseData?.message
+    || (Array.isArray(responseData?.messages) ? responseData.messages[0] : null)
+    || (typeof responseData?.detail === 'string' ? responseData.detail : null);
+
+  if (responseMessage) return responseMessage;
+  if (error.request) return 'Could not connect to AutoForge. Check that the local backend is running.';
+  return error.message || fallback;
+};
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
-  const [token, setToken] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
-  useEffect(() => {
-    const savedToken = localStorage.getItem('authToken');
+  const navigate = useNavigate();
+  const [user, setUser] = useState(() => {
     const savedUser = localStorage.getItem('user');
-
-    if (savedToken && savedUser) {
-      setToken(savedToken);
-      setUser(JSON.parse(savedUser));
-    }
-
-    setLoading(false);
-  }, []);
+    return savedUser ? JSON.parse(savedUser) : null;
+  });
+  const [token, setToken] = useState(() => localStorage.getItem('authToken'));
+  const [loading, setLoading] = useState(() => Boolean(localStorage.getItem('authToken')));
+  const [error, setError] = useState(null);
 
   const login = async (email, password) => {
     try {
@@ -37,7 +40,7 @@ export const AuthProvider = ({ children }) => {
 
       return { success: true, user };
     } catch (err) {
-      const message = err.response?.data?.message || 'Login failed';
+      const message = getAuthErrorMessage(err, 'Login failed');
       setError(message);
       return { success: false, error: message };
     } finally {
@@ -65,7 +68,9 @@ export const AuthProvider = ({ children }) => {
 
       return { success: true, user };
     } catch (err) {
-      const message = err.response?.data?.message || err.message || 'Registration failed';
+      const message = err.response?.status === 409
+        ? 'An account with this email already exists. Log in instead or use a different email.'
+        : getAuthErrorMessage(err, 'Registration failed');
       setError(message);
       return { success: false, error: message };
     } finally {
@@ -73,14 +78,41 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const logout = () => {
+  const logout = useCallback(() => {
     setUser(null);
     setToken(null);
     setError(null);
     localStorage.removeItem('authToken');
     localStorage.removeItem('user');
     authAPI.logout();
-  };
+  }, []);
+
+  useEffect(() => {
+    if (!localStorage.getItem('authToken')) return undefined;
+
+    let active = true;
+    authAPI.getCurrentUser()
+      .then((response) => {
+        if (active) {
+          setUser(response.data);
+          localStorage.setItem('user', JSON.stringify(response.data));
+        }
+      })
+      .catch(() => {
+        if (active) {
+          logout();
+          setError('Your saved sign-in is no longer valid. Log in again, or create an account if you switched to a fresh local database.');
+          navigate('/login', { replace: true });
+        }
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [logout, navigate]);
 
   const updateProfile = async (userData) => {
     try {
@@ -149,13 +181,3 @@ export const AuthProvider = ({ children }) => {
     </AuthContext.Provider>
   );
 };
-
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within AuthProvider');
-  }
-  return context;
-};
-
-export default AuthContext;

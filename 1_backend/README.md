@@ -20,12 +20,21 @@
 
 ## Run
 
-```bash
-.\mvnw.cmd spring-boot:run
+```powershell
+Get-Content ..\.env | ForEach-Object {
+    if ($_ -match '^\s*([^#\s][^=]*)=(.*)$') {
+        $name = $Matches[1].Trim()
+        $value = $Matches[2].Trim().Trim('"').Trim("'")
+        Set-Item "Env:$name" $value
+    }
+}
+.\mvnw.cmd '-Dmaven.test.skip=true' spring-boot:run '-Dspring-boot.run.profiles=demo'
 ```
 
-The default `localtest` profile uses an in-memory H2 database. The local H2
-console is available at `http://localhost:8080/h2-console`.
+The `demo` profile uses an in-memory H2 database on port `8089`. The local H2
+console is available at `http://localhost:8089/h2-console`. Tests are skipped
+for this launch because the existing `ScanServiceTest` currently targets an
+older service API and does not compile.
 
 For PostgreSQL, disable the default local profile by activating a non-local
 profile (for example `SPRING_PROFILES_ACTIVE=postgres`) and configure
@@ -86,6 +95,8 @@ are recorded as `FAILED`.
 - `PATCH /api/admin/plan-requests/{id}/approve` / `/reject`
 - `POST /api/repositories` — connect a GitHub repo (`{ "githubRepoFullName": "org/repo" }`)
 - `GET /api/repositories` — list your connected repos
+- `POST /api/repositories/{id}/trigger-scan` — queue a scan of the repository's latest GitHub commit
+- `GET /api/repositories/{id}/scans` — list scan history for a connected repository
 - `DELETE /api/repositories/{id}` — disconnect a repo
 - `POST /api/webhooks/github` — now persists a `WebhookEvent` + `QUEUED` `Scan` row on a verified push
 - `GET /api/v1/scans?skip=0&limit=10` — paginated scan list
@@ -109,17 +120,22 @@ Malformed findings fail the scan rather than being silently dropped.
 
 LLM remediation uses an OpenAI-compatible chat-completions endpoint. Configure
 `AUTOFORGE_LLM_API_KEY`, `AUTOFORGE_LLM_MODEL`, and optionally
-`AUTOFORGE_LLM_ENDPOINT`. Remediation preview/generation is unavailable until
-configured and is restricted to findings explicitly marked reachable. Generated
-patches are stored as unvalidated suggestions; they still require review and
-testing before application.
+`AUTOFORGE_LLM_ENDPOINT` in the backend process environment. Google AI Studio
+can use `https://generativelanguage.googleapis.com/v1beta/openai/chat/completions`;
+set the model to an exact model ID enabled for your API key. Keep the API key
+in the ignored root `.env` file or another secret store, never in source control.
+Remediation preview/generation is unavailable until configured and is
+restricted to findings explicitly marked reachable. Generated patches are
+stored as unvalidated suggestions; they still require review and testing before
+application.
 
 Queued webhook/project scans use Redis when available and the in-memory fallback
-otherwise. The worker currently clones HTTPS GitHub repositories only; set
-`GITHUB_TOKEN` for private repository access. Set `SCAN_QUEUE_POLL_INTERVAL_MS`
-to tune polling. The scanner wrapper must still be provided separately as
-described above; without it, the background job correctly fails rather than
-returning fabricated findings.
+otherwise. The worker currently clones HTTPS GitHub repositories only. Public
+repositories need no token; for private repositories, set `GITHUB_TOKEN` in
+the root `.env` with repository Contents: read access. Set
+`SCAN_QUEUE_POLL_INTERVAL_MS` to tune polling. The scanner wrapper must still be
+provided separately as described above; without it, the background job
+correctly fails rather than returning fabricated findings.
 
 ### Weeks 11–16 integrations
 
@@ -140,6 +156,20 @@ can only submit feedback for findings in their own projects or repositories.
 `POST /api/v1/remediations/{id}/create-pr` publishes only an approved fix.
 Configure `GITHUB_TOKEN`
 with repository contents-write, pull-request, and commit-status permissions.
+GitHub push and pull-request webhooks accept `POST /api/webhooks/github` (also
+`/api/v1/webhooks/github`) and verify `X-Hub-Signature-256` using
+`AUTOFORGE_GITHUB_WEBHOOK_SECRET`. Check receiver readiness with
+`GET /api/v1/webhooks/health`; it reports missing secret configuration without
+exposing the secret. Connect the repository in the dashboard first. Pushes and
+supported PR actions queue scans visible in repository scan
+history; scan progress is persisted and streamed to the dashboard. When the
+optional PR analyzer is enabled, PR events are also dispatched to its diff-based
+review worker, which posts inline findings, the `autoforge/security-gate`
+commit status, and SARIF. Set the same random secret in GitHub and never use the
+development default. Configure `GITHUB_TOKEN` with pull-request, commit-status,
+contents-read, and code-scanning permissions for the PR worker.
+`AUTOFORGE_GITHUB_PR_WEBHOOK_URL` points the backend to that worker's internal
+receiver. See the AST analyzer setup for the Compose command and tunnel steps.
 The optional `POST /api/v1/policies/evaluate/github-status` endpoint evaluates
 the reachability-aware gate and posts `success` or `failure` to the scan's
 commit with context `AutoForge/quality-gate`. Configure GitHub branch
@@ -156,9 +186,9 @@ should be verified against an isolated PostgreSQL instance before deployment.
 
 GitHub push webhooks persist the branch and up to 500 safe changed paths from
 the event's commit list on the scan job and queue payload. Pull-request
-webhooks use the head branch and SHA; changed paths are included only when the
-payload supplies a `pull_request.files` list. Standard GitHub PR webhooks do
-not include that list, and the scanner wrapper currently has no documented
+webhooks use the head branch and SHA; standard GitHub PR payloads do not include
+the changed-file list, so the optional PR worker fetches and analyzes the actual
+PR diff separately. The dashboard scan remains a full commit scan.
 changed-path argument, so these paths are metadata and do not yet restrict
 scanner execution.
 

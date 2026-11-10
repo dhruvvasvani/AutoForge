@@ -30,6 +30,7 @@ AutoForge is an AI-powered DevSecOps platform with automated static analysis, re
 | `GET` | `/api/v1/scans/{jobId}` | Get scan job real-time status and timestamps |
 | `GET` | `/api/v1/projects/{id}/scans` | Paginated scan history for a project |
 | `POST` | `/api/v1/webhooks/github` | Ingest GitHub push/PR event with HMAC-SHA256 signature verification |
+| `GET` | `/api/v1/webhooks/health` | Check webhook receiver and signing-secret configuration |
 | `POST` | `/api/v1/webhooks/gitlab` | Ingest GitLab webhook with `X-Gitlab-Token` header validation |
 | `GET` | `/api/v1/scans/{scanId}/findings` | Retrieve all findings detected in a scan |
 | `GET` | `/api/v1/projects/{id}/findings` | Filter active project findings by severity & rule |

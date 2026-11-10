@@ -18,6 +18,7 @@ import java.util.Collection;
 @Repository
 public interface ScanRepository extends JpaRepository<Scan, Long> {
     List<Scan> findByRepositoryId(Long repositoryId);
+    List<Scan> findByRepositoryIdOrderByCreatedAtDesc(Long repositoryId);
     Page<Scan> findByProjectId(Long projectId, Pageable pageable);
     List<Scan> findByProjectId(Long projectId);
 

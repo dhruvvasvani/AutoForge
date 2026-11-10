@@ -20,6 +20,8 @@ public class ScanDetailResultResponse {
     private String status;
     private String errorMessage;
     private Integer progress;
+    private String progressStage;
+    private String progressMessage;
     private Instant createdAt;
     private Instant startedAt;
     private Instant completedAt;

@@ -12,7 +12,11 @@
   --surface-raised: #151d29;
   --border: #293342;
   --muted: #9aa5b5;
-  --accent: #a78bfa;
+  --power-blue: #1400c6;
+  --electric-red: #ff0028;
+  --deep-green: #657a00;
+  --bright-green: #beef00;
+  --accent: var(--bright-green);
 }
 
 * {
@@ -24,7 +28,7 @@ body {
   min-height: 100vh;
   margin: 0;
   background:
-    radial-gradient(ellipse at 70% -15%, rgba(112, 63, 255, 0.12), transparent 42%),
+    radial-gradient(ellipse at 70% -15%, rgba(20, 0, 198, 0.16), transparent 42%),
     #080b11;
 }
 
@@ -68,7 +72,7 @@ a {
 }
 
 .standalone-analyzer-page__brand {
-  color: #eee8ff;
+  color: var(--bright-green);
   font-size: 15px;
   font-weight: 750;
   text-decoration: none;
@@ -81,9 +85,18 @@ a {
 }
 
 .standalone-analyzer-page__header > a:last-child {
-  color: #c9b8ff;
+  color: var(--bright-green);
   font-size: 11px;
   white-space: nowrap;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--bright-green);
+  outline-offset: 3px;
 }
 
 .standalone-analyzer-page__content {

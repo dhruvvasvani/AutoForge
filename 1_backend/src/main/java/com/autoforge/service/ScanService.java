@@ -146,8 +146,46 @@ public class ScanService {
         }
         if (newStatus == ScanStatus.COMPLETED) {
             scan.setProgress(100);
+            scan.setProgressStage("COMPLETED");
+            scan.setProgressMessage("Security scan completed.");
+        } else if (newStatus == ScanStatus.FAILED) {
+            scan.setProgressStage("FAILED");
+            scan.setProgressMessage(errorMessage);
         }
         return toJobResponse(scanRepository.save(scan));
+    }
+
+    public ScanJobResponse updateScanProgress(Long scanId, String stage, String message) {
+        Scan scan = scanRepository.findById(scanId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Scan not found: " + scanId));
+        if (scan.getStatus() == ScanStatus.COMPLETED || scan.getStatus() == ScanStatus.FAILED) {
+            return toJobResponse(scan);
+        }
+
+        String normalizedStage = stage.trim().toUpperCase(java.util.Locale.ROOT);
+        if (!normalizedStage.matches("[A-Z0-9_]{1,64}")) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Scan progress stage is invalid.");
+        }
+        scan.setProgressStage(normalizedStage);
+        scan.setProgressMessage(message == null ? null : message.substring(0, Math.min(message.length(), 2048)));
+        scan.setProgress(Math.max(scan.getProgress() == null ? 0 : scan.getProgress(), progressForStage(normalizedStage)));
+        if (scan.getStatus() == ScanStatus.QUEUED) {
+            scan.setStatus(ScanStatus.RUNNING);
+            scan.setStartedAt(Instant.now());
+        }
+        return toJobResponse(scanRepository.save(scan));
+    }
+
+    private int progressForStage(String stage) {
+        return switch (stage) {
+            case "JOB_RECEIVED" -> 5;
+            case "REPO_CLONED" -> 15;
+            case "SEMGREP_DONE" -> 35;
+            case "CHECKOV_DONE" -> 55;
+            case "AST_DONE" -> 80;
+            case "RESULTS_POSTED" -> 95;
+            default -> 1;
+        };
     }
 
     public void failQueuedScan(Long scanId, String errorMessage) {
@@ -165,6 +203,8 @@ public class ScanService {
             scan.setErrorMessage(payload.getError() == null ? "Pipeline worker reported scan failure."
                     : payload.getError().substring(0, Math.min(payload.getError().length(), 1024)));
             scan.setCompletedAt(Instant.now());
+            scan.setProgressStage("FAILED");
+            scan.setProgressMessage(scan.getErrorMessage());
             return scanRepository.save(scan);
         }
 
@@ -194,6 +234,8 @@ public class ScanService {
         scan.setStatus(ScanStatus.COMPLETED);
         scan.setCompletedAt(Instant.now());
         scan.setProgress(100);
+        scan.setProgressStage("COMPLETED");
+        scan.setProgressMessage("Security scan completed.");
         return scanRepository.save(scan);
     }
 
@@ -383,6 +425,8 @@ public class ScanService {
             scan.setStatus(ScanStatus.COMPLETED);
             scan.setCompletedAt(Instant.now());
             scan.setProgress(100);
+            scan.setProgressStage("COMPLETED");
+            scan.setProgressMessage("Security scan completed.");
             scanRepository.save(scan);
         } catch (com.fasterxml.jackson.core.JsonProcessingException ex) {
             throw new IllegalStateException("Unable to serialize scanner metrics.", ex);
@@ -454,6 +498,8 @@ public class ScanService {
                 .status(scan.getStatus().name())
                 .errorMessage(scan.getErrorMessage())
                 .progress(scan.getProgress())
+                .progressStage(scan.getProgressStage())
+                .progressMessage(scan.getProgressMessage())
                 .createdAt(scan.getCreatedAt())
                 .startedAt(scan.getStartedAt())
                 .completedAt(scan.getCompletedAt())
@@ -552,6 +598,8 @@ public class ScanService {
                 .status(scan.getStatus().name())
                 .errorMessage(scan.getErrorMessage())
                 .progress(scan.getProgress())
+                .progressStage(scan.getProgressStage())
+                .progressMessage(scan.getProgressMessage())
                 .createdAt(scan.getCreatedAt())
                 .completedAt(scan.getCompletedAt())
                 .build();

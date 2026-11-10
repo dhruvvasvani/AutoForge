@@ -26,7 +26,11 @@ def create_webhook_app(
 ) -> FastAPI:
     secret = webhook_secret if webhook_secret is not None else os.getenv("WEBHOOK_SECRET")
     queue_path = database_path or os.getenv("JOB_DB_PATH", "/data/jobs.sqlite3")
-    configured_repository = repository or os.getenv("GITHUB_REPOSITORY")
+    configured_repositories = {
+        item.strip().casefold()
+        for item in (repository or os.getenv("GITHUB_REPOSITORIES") or os.getenv("GITHUB_REPOSITORY") or "").split(",")
+        if item.strip()
+    }
     queue = SQLiteJobQueue(queue_path)
     metrics = MetricsCollector()
     rule_tuner = RuleTuner(
@@ -37,9 +41,7 @@ def create_webhook_app(
     )
 
     async def enqueue_event(event: PullRequestEvent) -> None:
-        if not configured_repository:
-            raise HTTPException(status_code=503, detail="GITHUB_REPOSITORY is not configured")
-        if event.repository.casefold() != configured_repository.casefold():
+        if configured_repositories and event.repository.casefold() not in configured_repositories:
             raise HTTPException(status_code=403, detail="Webhook repository is not configured")
         queue.enqueue(event)
 
@@ -105,8 +107,8 @@ def create_webhook_app(
         ):
             raise HTTPException(status_code=400, detail="Malformed review-comment payload")
         if (
-            not configured_repository
-            or full_name.casefold() != configured_repository.casefold()
+            configured_repositories
+            and full_name.casefold() not in configured_repositories
         ):
             raise HTTPException(status_code=403, detail="Feedback repository is not configured")
         command = re.fullmatch(
@@ -142,8 +144,6 @@ def create_webhook_app(
     async def healthcheck() -> dict[str, object]:
         if not app.state.webhook_secret:
             raise HTTPException(status_code=503, detail="WEBHOOK_SECRET is not configured")
-        if not configured_repository:
-            raise HTTPException(status_code=503, detail="GITHUB_REPOSITORY is not configured")
         worker_credentials_configured = bool(os.getenv("GITHUB_TOKEN", "").strip())
         if not worker_credentials_configured:
             raise HTTPException(
@@ -156,6 +156,7 @@ def create_webhook_app(
             "status": "ready",
             "queue": queue.counts(),
             "worker_credentials_configured": worker_credentials_configured,
+            "repository_allowlist": sorted(configured_repositories),
         }
 
     @app.get("/metrics")

@@ -14,7 +14,7 @@ import java.util.List;
 public class WebCorsConfiguration {
     @Bean
     public CorsConfigurationSource corsConfigurationSource(
-            @Value("${autoforge.cors.allowed-origins:http://localhost:3000,http://localhost:5173}") String allowedOrigins
+            @Value("${autoforge.cors.allowed-origins:http://localhost:3000,http://localhost:5173,http://127.0.0.1:5173}") String allowedOrigins
     ) {
         List<String> origins = Arrays.stream(allowedOrigins.split(","))
                 .map(String::trim)

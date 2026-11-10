@@ -2,6 +2,8 @@ package com.autoforge.controller;
 
 import com.autoforge.dto.ConnectRepositoryRequest;
 import com.autoforge.dto.RepositoryResponse;
+import com.autoforge.dto.ScanJobResponse;
+import com.autoforge.service.RepositoryScanService;
 import com.autoforge.service.RepositoryService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -16,6 +18,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class RepositoryController {
     private final RepositoryService repositoryService;
+    private final RepositoryScanService repositoryScanService;
 
     @PostMapping
     public ResponseEntity<RepositoryResponse> connect(Authentication authentication,
@@ -27,6 +30,17 @@ public class RepositoryController {
     @GetMapping
     public ResponseEntity<List<RepositoryResponse>> list(Authentication authentication) {
         return ResponseEntity.ok(repositoryService.listRepositories(authentication.getName()));
+    }
+
+    @PostMapping("/{id}/trigger-scan")
+    public ResponseEntity<ScanJobResponse> triggerScan(Authentication authentication, @PathVariable Long id) {
+        return ResponseEntity.accepted()
+                .body(repositoryScanService.triggerLatestScan(id, authentication.getName()));
+    }
+
+    @GetMapping("/{id}/scans")
+    public ResponseEntity<List<ScanJobResponse>> listScans(Authentication authentication, @PathVariable Long id) {
+        return ResponseEntity.ok(repositoryScanService.listScans(id, authentication.getName()));
     }
 
     @DeleteMapping("/{id}")

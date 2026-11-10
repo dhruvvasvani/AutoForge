@@ -26,7 +26,7 @@ public class Finding {
     @Column(name = "rule_id", nullable = false, length = 128)
     private String ruleId;
 
-    @Column(nullable = false, length = 255)
+    @Column(nullable = false, columnDefinition = "TEXT")
     private String title;
 
     @Column(name = "file_path", nullable = false, length = 512)

@@ -1,10 +1,12 @@
 package com.autoforge.controller;
 
 import com.autoforge.service.ScanService;
+import com.autoforge.service.GitHubPullRequestDispatchClient;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -25,14 +27,37 @@ import java.util.Set;
 @RequiredArgsConstructor
 @Slf4j
 public class GithubWebhookController {
+    private static final Set<String> SUPPORTED_PULL_REQUEST_ACTIONS =
+            Set.of("opened", "reopened", "synchronize", "ready_for_review");
+
     private final ScanService scanService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    @Value("${autoforge.github.webhook-secret:change-this-in-env-vars}")
+    @Autowired(required = false)
+    private GitHubPullRequestDispatchClient pullRequestDispatchClient;
+
+    @Value("${AUTOFORGE_GITHUB_WEBHOOK_SECRET:${autoforge.github.webhook-secret:}}")
     private String webhookSecret;
 
     @Value("${autoforge.gitlab.webhook-secret:gitlab_webhook_secret_key}")
     private String gitlabSecret;
+
+    @GetMapping("/health")
+    public ResponseEntity<Map<String, String>> webhookHealth() {
+        Map<String, String> response = new LinkedHashMap<>();
+        if (!isWebhookSecretConfigured()) {
+            response.put("status", "needs_configuration");
+            response.put("detail", "AUTOFORGE_GITHUB_WEBHOOK_SECRET is not configured on the backend.");
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(response);
+        }
+
+        response.put("status", "ready");
+        response.put("detail", "The backend GitHub webhook receiver is ready.");
+        response.put("pull_request_analysis",
+                pullRequestDispatchClient != null && pullRequestDispatchClient.isConfigured()
+                        ? "configured" : "not_configured");
+        return ResponseEntity.ok(response);
+    }
 
     @PostMapping("/github")
     public ResponseEntity<Map<String, Object>> handlePush(
@@ -42,6 +67,11 @@ public class GithubWebhookController {
     ) throws Exception {
         Map<String, Object> response = new LinkedHashMap<>();
 
+        if (!isWebhookSecretConfigured()) {
+            response.put("status", "error");
+            response.put("message", "GitHub webhook secret is not configured");
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(response);
+        }
         if (signature == null || !isValidSignature(rawPayload, signature)) {
             response.put("status", "error");
             response.put("message", "Invalid or missing X-Hub-Signature-256 header");
@@ -55,9 +85,17 @@ public class GithubWebhookController {
         }
 
         JsonNode payload = objectMapper.readTree(rawPayload);
+        boolean pullRequestEvent = "pull_request".equals(eventType);
+        if (pullRequestEvent) {
+            String action = payload.path("action").asText(null);
+            if (!SUPPORTED_PULL_REQUEST_ACTIONS.contains(action)) {
+                response.put("status", "ignored");
+                response.put("message", "Ignored pull request action: " + action);
+                return ResponseEntity.accepted().body(response);
+            }
+        }
         String repoFullName = payload.path("repository").path("full_name").asText(null);
         JsonNode pullRequest = payload.path("pull_request");
-        boolean pullRequestEvent = "pull_request".equals(eventType);
         String commitSha = pullRequestEvent
                 ? pullRequest.path("head").path("sha").asText(null)
                 : payload.path("after").asText(null);
@@ -73,21 +111,37 @@ public class GithubWebhookController {
             return ResponseEntity.badRequest().body(response);
         }
 
-        if (repoFullName == null || commitSha == null || commitSha.isBlank()) {
+        if (repoFullName == null || !repoFullName.matches("[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")
+                || commitSha == null || !commitSha.matches("[a-fA-F0-9]{40}")) {
             response.put("status", "error");
-            response.put("message", "Malformed push payload");
+            response.put("message", "Malformed GitHub webhook payload");
             return ResponseEntity.badRequest().body(response);
         }
 
         List<String> changedFiles = changedFiles(payload, pullRequestEvent);
         var result = scanService.createOrGetScanJobFromPush(repoFullName, commitSha, eventType, branch, changedFiles);
         var scan = result.scan();
+        String pullRequestAnalysis = pullRequestEvent
+                && pullRequestDispatchClient != null
+                ? pullRequestDispatchClient.dispatch(rawPayload, signature)
+                : "not_configured";
         response.put("status", result.created() ? "accepted" : "existing");
-        response.put("message", result.created() ? "Scan job queued successfully" : "Scan already exists for this commit");
+        response.put("message", result.created()
+                ? "Security scan job queued successfully"
+                : "Security scan already exists for this commit");
         response.put("scan_id", scan.getId());
         response.put("branch", scan.getBranch());
         response.put("changed_files", changedFiles);
+        if (pullRequestEvent) {
+            response.put("pull_request_analysis", pullRequestAnalysis);
+        }
         return ResponseEntity.status(result.created() ? HttpStatus.ACCEPTED : HttpStatus.OK).body(response);
+    }
+
+    private boolean isWebhookSecretConfigured() {
+        return webhookSecret != null
+                && !webhookSecret.isBlank()
+                && !"change-this-in-env-vars".equals(webhookSecret);
     }
 
     @PostMapping("/gitlab")

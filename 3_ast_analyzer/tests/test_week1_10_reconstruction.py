@@ -42,6 +42,54 @@ def test_direct_source_to_sink_and_sanitizer_signal():
     assert findings[1].has_sanitizer
 
 
+@pytest.mark.parametrize(
+    ("query", "parameters"),
+    [
+        ("SELECT * FROM users WHERE id = ?", "(user_id,)"),
+        ("SELECT * FROM users WHERE id = %s", "(user_id,)"),
+        ("SELECT * FROM users WHERE id = :user_id", "{'user_id': user_id}"),
+    ],
+)
+def test_parameterized_sql_does_not_report_bound_user_input(query, parameters):
+    source = (
+        "def get_user(cursor):\n"
+        "    user_id = input()\n"
+        f"    cursor.execute({query!r}, {parameters})\n"
+    )
+
+    assert TaintEngine().analyze_cfg(source) == []
+
+
+def test_parameterized_sql_fix_keeps_unsafe_query_concatenation():
+    source = (
+        "def get_user(cursor):\n"
+        "    user_id = input()\n"
+        "    query = 'SELECT * FROM users WHERE id = ' + user_id\n"
+        "    cursor.execute(query, (user_id,))\n"
+    )
+
+    findings = TaintEngine().analyze_cfg(source)
+
+    assert len(findings) == 1
+    assert findings[0].rule_id == "SQLI_RAW_CONCAT"
+    assert findings[0].line == 4
+
+
+def test_unsafe_dynamic_sql_is_reported_even_when_bind_values_are_also_passed():
+    source = (
+        "def get_user(cursor):\n"
+        "    user_id = input()\n"
+        "    query = \"SELECT * FROM users WHERE note = '?' \" + user_id\n"
+        "    cursor.execute(query, (user_id,))\n"
+    )
+
+    findings = TaintEngine().analyze_cfg(source)
+
+    assert len(findings) == 1
+    assert findings[0].rule_id == "SQLI_RAW_CONCAT"
+    assert findings[0].variable == "query"
+
+
 def test_cross_file_import_links_argument_and_taint_sink(tmp_path):
     (tmp_path / "app.py").write_text(
         "from helpers import consume\n"

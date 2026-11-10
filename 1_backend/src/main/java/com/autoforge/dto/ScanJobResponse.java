@@ -45,6 +45,12 @@ public class ScanJobResponse {
     @JsonProperty("progress")
     private Integer progress;
 
+    @JsonProperty("progress_stage")
+    private String progressStage;
+
+    @JsonProperty("progress_message")
+    private String progressMessage;
+
     @JsonProperty("created_at")
     private Instant createdAt;
 

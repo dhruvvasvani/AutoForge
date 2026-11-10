@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import base64
 from pathlib import Path
 
 
@@ -79,6 +80,21 @@ def test_backend_queue_message_uses_repository_url_for_result_name():
     assert parsed["scan_id"] == 42
     assert parsed["repo"] == "owner/repo"
     assert parsed["repo_url"] == "https://github.com/owner/repo.git"
+
+
+def test_git_environment_adds_private_github_credentials_without_exposing_token(monkeypatch):
+    module = _load_queue_worker()
+    token = "test-github-token"
+    monkeypatch.setenv("GITHUB_TOKEN", token)
+
+    git_env = module._git_env()
+
+    assert git_env["GIT_CONFIG_KEY_0"] == "http.https://github.com/.extraheader"
+    assert git_env["GIT_CONFIG_VALUE_0"] == (
+        "AUTHORIZATION: basic "
+        + base64.b64encode(f"x-access-token:{token}".encode()).decode()
+    )
+    assert token not in git_env["GIT_CONFIG_VALUE_0"]
 
 
 def test_failed_scan_is_reported_to_backend(monkeypatch):

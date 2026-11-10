@@ -18,6 +18,7 @@ Config comes from environment variables (all prefixed AUTOFORGE_), see CONFIG be
 """
 
 import argparse
+import base64
 import json
 import logging
 import math
@@ -76,6 +77,19 @@ WORKSPACE_DIR = Path(_env("WORKSPACE_DIR", str(Path(tempfile.gettempdir()) / "au
 
 # semgrep/checkov crash on Windows (cp1252) without UTF-8 forced
 UTF8_ENV = {**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"}
+
+
+def _git_env():
+    env = UTF8_ENV.copy()
+    token = os.environ.get("GITHUB_TOKEN", "").strip()
+    if token:
+        credential = base64.b64encode(f"x-access-token:{token}".encode()).decode()
+        env.update({
+            "GIT_CONFIG_COUNT": "1",
+            "GIT_CONFIG_KEY_0": "http.https://github.com/.extraheader",
+            "GIT_CONFIG_VALUE_0": f"AUTHORIZATION: basic {credential}",
+        })
+    return env
 
 COMMIT_RE = re.compile(r"^[0-9a-fA-F]{7,40}$")
 REPO_NAME_RE = re.compile(r"^[\w.-]+/[\w.-]+$")
@@ -223,7 +237,7 @@ class ScanWorker:
     def _git(self, cwd, args, timeout):
         return subprocess.run(
             ["git", "-C", str(cwd), *args],
-            check=True, capture_output=True, text=True, timeout=timeout, env=UTF8_ENV,
+            check=True, capture_output=True, text=True, timeout=timeout, env=_git_env(),
         )
 
     def prepare_repo(self, repo_url, commit, scan_id):
@@ -251,7 +265,7 @@ class ScanWorker:
             _rmtree(workdir)
             subprocess.run(
                 ["git", "clone", "-q", repo_url, str(workdir)],
-                check=True, capture_output=True, text=True, timeout=CLONE_TIMEOUT, env=UTF8_ENV,
+                check=True, capture_output=True, text=True, timeout=CLONE_TIMEOUT, env=_git_env(),
             )
             self._git(workdir, ["checkout", "-q", commit], 120)
             logger.info("   full clone + checkout %s", commit[:10])

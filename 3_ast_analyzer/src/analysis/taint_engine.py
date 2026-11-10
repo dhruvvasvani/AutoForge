@@ -20,6 +20,7 @@ class TaintFinding:
 
 class TaintEngine(ast.NodeVisitor):
     SOURCES = {"getParameter", "get_param", "get", "input", "getParameterValues"}
+    SQL_SINKS = {"execute", "executeQuery", "executemany"}
     SINK_RULES = {
         "execute": "SQLI_RAW_CONCAT",
         "executeQuery": "SQLI_RAW_CONCAT",
@@ -257,7 +258,17 @@ class TaintEngine(ast.NodeVisitor):
         name = self._call_name(node.func)
         sink_name = name.rsplit(".", 1)[-1]
         if sink_name in self.SINK_RULES:
-            for argument in (*node.args, *(keyword.value for keyword in node.keywords)):
+            if sink_name in self.SQL_SINKS:
+                checked_arguments = tuple(node.args[:1]) or tuple(
+                    keyword.value
+                    for keyword in node.keywords
+                    if keyword.arg in {"sql", "query", "statement"}
+                )
+            else:
+                checked_arguments = tuple(node.args) + tuple(
+                    keyword.value for keyword in node.keywords
+                )
+            for argument in checked_arguments:
                 origin = self._taint_origin(argument)
                 if origin:
                     variable = self._tainted_name(argument) or ast.unparse(argument)

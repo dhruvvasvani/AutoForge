@@ -4,6 +4,7 @@ import com.autoforge.controller.GithubWebhookController;
 import com.autoforge.entity.Scan;
 import com.autoforge.entity.ScanStatus;
 import com.autoforge.service.ScanService;
+import com.autoforge.service.GitHubPullRequestDispatchClient;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -28,6 +29,8 @@ public class WebhookSecurityUnitTest {
 
     @Mock
     private ScanService scanService;
+    @Mock
+    private GitHubPullRequestDispatchClient pullRequestDispatchClient;
 
     private GithubWebhookController webhookController;
 
@@ -36,6 +39,7 @@ public class WebhookSecurityUnitTest {
     @BeforeEach
     void setUp() {
         webhookController = new GithubWebhookController(scanService);
+        ReflectionTestUtils.setField(webhookController, "pullRequestDispatchClient", pullRequestDispatchClient);
         ReflectionTestUtils.setField(webhookController, "webhookSecret", SECRET);
         ReflectionTestUtils.setField(webhookController, "gitlabSecret", "test-gitlab-secret");
     }
@@ -118,6 +122,86 @@ public class WebhookSecurityUnitTest {
         assertEquals(HttpStatus.UNAUTHORIZED, response.getStatusCode());
         assertEquals("error", response.getBody().get("status"));
         verify(scanService, never()).createScanJobFromPush(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void webhookHealthReportsReceiverAndOptionalPrDispatchConfiguration() {
+        when(pullRequestDispatchClient.isConfigured()).thenReturn(true);
+
+        ResponseEntity<Map<String, String>> response = webhookController.webhookHealth();
+
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertEquals("ready", response.getBody().get("status"));
+        assertEquals("configured", response.getBody().get("pull_request_analysis"));
+    }
+
+    @Test
+    void webhookHealthReportsMissingSecretAndRejectsEvents() throws Exception {
+        ReflectionTestUtils.setField(webhookController, "webhookSecret", "");
+
+        ResponseEntity<Map<String, String>> health = webhookController.webhookHealth();
+        ResponseEntity<Map<String, Object>> event = webhookController.handlePush("{}", null, "push");
+
+        assertEquals(HttpStatus.SERVICE_UNAVAILABLE, health.getStatusCode());
+        assertEquals("needs_configuration", health.getBody().get("status"));
+        assertEquals(HttpStatus.SERVICE_UNAVAILABLE, event.getStatusCode());
+        verifyNoInteractions(scanService, pullRequestDispatchClient);
+    }
+
+    @Test
+    void pullRequestWebhookQueuesDashboardAndDiffAnalysis() throws Exception {
+        String payload = """
+                {
+                  "action": "opened",
+                  "repository": { "full_name": "octocat/Hello-World" },
+                  "pull_request": {
+                    "number": 12,
+                    "head": { "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "ref": "feature/security" }
+                  }
+                }
+                """;
+        String signature = calculateHmac(payload, SECRET);
+        Scan scan = new Scan();
+        scan.setId(42L);
+        scan.setBranch("feature/security");
+        scan.setStatus(ScanStatus.QUEUED);
+        when(scanService.createOrGetScanJobFromPush(
+                "octocat/Hello-World", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "pull_request", "feature/security", List.of()))
+                .thenReturn(new ScanService.ScanCreationResult(scan, true));
+        when(pullRequestDispatchClient.dispatch(payload, signature)).thenReturn("queued");
+
+        ResponseEntity<Map<String, Object>> response =
+                webhookController.handlePush(payload, signature, "pull_request");
+
+        assertEquals(HttpStatus.ACCEPTED, response.getStatusCode());
+        assertEquals("queued", response.getBody().get("pull_request_analysis"));
+        assertEquals(42L, response.getBody().get("scan_id"));
+        verify(pullRequestDispatchClient).dispatch(payload, signature);
+    }
+
+    @Test
+    void unsupportedPullRequestActionDoesNotQueueScan() throws Exception {
+        String payload = """
+                {
+                  "action": "closed",
+                  "repository": { "full_name": "octocat/Hello-World" },
+                  "pull_request": {
+                    "number": 12,
+                    "head": { "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "ref": "feature/security" }
+                  }
+                }
+                """;
+        String signature = calculateHmac(payload, SECRET);
+
+        ResponseEntity<Map<String, Object>> response =
+                webhookController.handlePush(payload, signature, "pull_request");
+
+        assertEquals(HttpStatus.ACCEPTED, response.getStatusCode());
+        assertEquals("ignored", response.getBody().get("status"));
+        verify(scanService, never()).createOrGetScanJobFromPush(
+                anyString(), anyString(), anyString(), anyString(), anyList());
+        verifyNoInteractions(pullRequestDispatchClient);
     }
 
     @Test

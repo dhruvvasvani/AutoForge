@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { analyzerAPI, feedbackAPI, scanMetricsAPI } from '../api/client';
-import { useAuth } from '../context/AuthContext';
+import { analyzerAPI, scanMetricsAPI, webhookAPI } from '../api/client';
 import './LocalAnalyzer.css';
 
 const MAX_SOURCE_BYTES = 256_000;
@@ -17,7 +16,7 @@ const ALLOWED_FILENAMES = new Set([
   'pom.xml', 'go.mod', 'go.sum',
 ]);
 const EXCLUDED_DIRECTORIES = new Set([
-  '.git', '.hg', '.svn', '.venv', 'venv', 'node_modules', 'vendor',
+  '.git', '.hg', '.svn', '.venv', '.next', 'venv', 'node_modules', 'vendor',
   'build', 'dist', 'target', '__pycache__', '.pytest_cache',
 ]);
 const SECRET_FILENAMES = new Set([
@@ -33,6 +32,7 @@ const normalizeMetricsHistory = (scans) => scans.map((scan) => ({
 }));
 
 const normalizeFilePath = (filePath) => String(filePath || '').replace(/\\/g, '/').toLowerCase();
+const findingReviewKey = (scanId, index) => `${scanId}:${index}`;
 
 const sourceContextForFinding = (finding, files) => {
   const file = files.find(
@@ -65,6 +65,8 @@ const buildAiFixBrief = ({
   modelStatus,
   scanMetrics,
   scanComplete,
+  scanFindingCount,
+  dismissedFindingCount,
 }) => {
   const severityRank = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
   const prioritizedFindings = [...findings].sort((left, right) => (
@@ -101,6 +103,8 @@ const buildAiFixBrief = ({
     scanner_only: fileResults.filter((item) => item.status === 'scanner_only').length,
     files_failed: fileResults.filter((item) => item.status === 'failed').length,
     finding_count: findings.length,
+    scan_finding_count: scanFindingCount,
+    dismissed_false_positive_count: dismissedFindingCount,
     included_finding_count: includedFindings.length,
     omitted_finding_count: Math.max(0, findings.length - includedFindings.length),
     severity_counts: severityCounts,
@@ -113,7 +117,9 @@ const buildAiFixBrief = ({
   };
   const nextStep = findings.length
     ? 'Review the evidence for each finding and request a minimal patch for confirmed issues only.'
-    : 'No confirmed findings were returned. Do not invent a fix; investigate parser diagnostics or run additional checks if concerns remain.';
+    : dismissedFindingCount
+      ? 'All findings from this scan were manually marked false positive. They remain in the full scan JSON; review them or restore them if needed.'
+      : 'No confirmed findings were returned. Do not invent a fix; investigate parser diagnostics or run additional checks if concerns remain.';
 
   return {
     format: 'autoforge-ai-fix-handoff',
@@ -258,24 +264,25 @@ function WebhookSetup() {
   const [checking, setChecking] = useState(false);
   const [copyStatus, setCopyStatus] = useState('');
   const [healthDetail, setHealthDetail] = useState('');
-  const endpoint = `${(import.meta.env.VITE_WEBHOOK_URL || 'http://127.0.0.1:8091').replace(/\/+$/, '')}/api/v1/github/events`;
+  const backendBase = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8089/api';
+  const endpoint = `${backendBase.replace(/\/api\/?$/, '')}/api/v1/webhooks/github`;
 
   const checkWebhook = async () => {
     setChecking(true);
     setHealth('checking');
     setHealthDetail('');
     try {
-      const response = await analyzerAPI.webhookHealth();
+      const response = await webhookAPI.health();
       setHealth('ready');
-      setHealthDetail(response.data.worker_credentials_configured
-        ? 'Receiver and GitHub worker credentials are configured. This check cannot confirm the worker is actively processing jobs.'
-        : 'Receiver is online, but the GitHub worker token is missing; queued pull requests will not be analyzed.');
+      setHealthDetail(response.data.pull_request_analysis === 'configured'
+        ? 'Backend receiver is ready. Pull-request analysis forwarding is configured; make sure the optional PR worker is running.'
+        : 'Backend receiver is ready for dashboard scans. Pull-request analysis forwarding is not configured.');
     } catch (error) {
       setHealth(error.response?.status === 503 ? 'needs-configuration' : 'offline');
       setHealthDetail(error.response?.data?.detail || (
         error.response
-          ? `Webhook health check returned HTTP ${error.response.status}.`
-          : 'Webhook service could not be reached at the configured local URL.'
+          ? `Backend webhook health check returned HTTP ${error.response.status}.`
+          : 'Backend webhook could not be reached at the configured API URL.'
       ));
     } finally {
       setChecking(false);
@@ -296,8 +303,8 @@ function WebhookSetup() {
       <div className="analyzer-webhook__header">
         <div>
           <p className="analyzer-eyebrow">GitHub integration</p>
-          <h3>Pull request webhooks</h3>
-          <p>Set up authenticated pull-request events for the local pipeline.</p>
+          <h3>Push and pull-request webhooks</h3>
+          <p>Queue dashboard scans and run the PR security gate from GitHub events.</p>
         </div>
         <button
           type="button"
@@ -311,23 +318,24 @@ function WebhookSetup() {
       {open && (
         <div className="analyzer-webhook__content">
           <p>
-            Local endpoint: <code>{endpoint}</code>
+            GitHub webhook endpoint: <code>{endpoint}</code>
           </p>
           <p>
-            GitHub cannot reach a 127.0.0.1 address. Run the receiver and worker,
-            then expose port 8091 through a trusted HTTPS tunnel or deployment.
-            Keep the webhook secret and GitHub token on the server; never enter
-            them in this browser.
+            GitHub cannot reach a 127.0.0.1 address. First connect the repository
+            in this dashboard, then expose backend port 8089 through a trusted
+            HTTPS tunnel or deployment. Keep the webhook secret and GitHub token
+            on the server; never enter them in this browser.
           </p>
           <ol>
-            <li>Set <code>WEBHOOK_SECRET</code>, <code>GITHUB_REPOSITORY</code>, and <code>GITHUB_TOKEN</code> in the server-side <code>.env</code>.</li>
-            <li>Start both services with <code>docker compose --profile github up --build webhook ast-worker</code>.</li>
-            <li>Point a trusted HTTPS tunnel at <code>http://127.0.0.1:8091</code>, then configure its public URL ending in <code>/api/v1/github/events</code> in GitHub.</li>
-            <li>Select the Pull requests event and enable opened, reopened, and synchronize actions; use the same webhook secret.</li>
+            <li>Set <code>AUTOFORGE_GITHUB_WEBHOOK_SECRET</code> and a <code>GITHUB_TOKEN</code> with pull-request, commit-status, contents-read, and code-scanning permissions in the server-side <code>.env</code>. Both receivers use the same secret.</li>
+            <li>Start the stack with <code>docker compose --profile github up -d --build</code>.</li>
+            <li>Point a trusted HTTPS tunnel at <code>http://127.0.0.1:8089</code>, then set its public URL ending in <code>/api/v1/webhooks/github</code> in GitHub.</li>
+            <li>Select the Push and Pull requests events, including opened, reopened, synchronize, and ready-for-review actions. Use the same webhook secret.</li>
+            <li>Require the <code>autoforge/security-gate</code> commit status in branch protection if failed PR scans should block merging.</li>
           </ol>
           <div className="analyzer-webhook__actions">
             <button type="button" className="analyzer-secondary-button" onClick={copyEndpoint}>
-              Copy local endpoint
+              Copy local webhook endpoint
             </button>
             <button
               type="button"
@@ -335,12 +343,12 @@ function WebhookSetup() {
               onClick={checkWebhook}
               disabled={checking}
             >
-              {checking ? 'Checking…' : 'Check local webhook'}
+              {checking ? 'Checking…' : 'Check backend webhook'}
             </button>
             <span role="status">
               {health === 'not-checked' && 'Webhook readiness has not been checked yet.'}
               {health === 'ready' && healthDetail}
-              {health === 'checking' && 'Checking webhook service…'}
+              {health === 'checking' && 'Checking backend webhook…'}
               {(health === 'offline' || health === 'needs-configuration') && healthDetail}
               {copyStatus}
             </span>
@@ -352,7 +360,6 @@ function WebhookSetup() {
 }
 
 const LocalAnalyzer = () => {
-  const { user } = useAuth();
   const [files, setFiles] = useState([]);
   const [selectedFileId, setSelectedFileId] = useState('');
   const [scanResults, setScanResults] = useState([]);
@@ -373,10 +380,8 @@ const LocalAnalyzer = () => {
   const [scanHistory, setScanHistory] = useState([]);
   const [historyError, setHistoryError] = useState('');
   const [reportBusy, setReportBusy] = useState(false);
-  const [feedbackScanId, setFeedbackScanId] = useState('');
-  const [submittedFeedback, setSubmittedFeedback] = useState({});
-  const [feedbackBusy, setFeedbackBusy] = useState({});
-  const [feedbackError, setFeedbackError] = useState('');
+  const [scanReviewId, setScanReviewId] = useState('');
+  const [dismissedFindingKeys, setDismissedFindingKeys] = useState(() => new Set());
   const [aiFixPromptStatus, setAiFixPromptStatus] = useState('');
 
   const selectedFile = files.find((file) => file.id === selectedFileId) || files[0];
@@ -394,6 +399,18 @@ const LocalAnalyzer = () => {
         }))
       ))
   ), [projectFindings, scanResults]);
+  const activeFindings = useMemo(
+    () => allFindings.filter(
+      (_, index) => !dismissedFindingKeys.has(findingReviewKey(scanReviewId, index)),
+    ),
+    [allFindings, dismissedFindingKeys, scanReviewId],
+  );
+  const dismissedFindings = useMemo(
+    () => allFindings
+      .map((finding, index) => ({ finding, index }))
+      .filter(({ index }) => dismissedFindingKeys.has(findingReviewKey(scanReviewId, index))),
+    [allFindings, dismissedFindingKeys, scanReviewId],
+  );
   const parserDiagnostics = useMemo(() => (
     successes.flatMap((item) => (item.result.diagnostics || []).map((diagnostic) => ({
       ...diagnostic,
@@ -402,19 +419,19 @@ const LocalAnalyzer = () => {
   ), [successes]);
   const severityCounts = useMemo(() => {
     const counts = { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 };
-    for (const finding of allFindings) {
+    for (const finding of activeFindings) {
       const severity = String(finding.severity || '').toUpperCase();
       if (Object.hasOwn(counts, severity)) counts[severity] += 1;
     }
     return counts;
-  }, [allFindings]);
+  }, [activeFindings]);
   const reachabilityCounts = useMemo(() => ({
-    reachable: allFindings.filter((finding) => finding.reachability === 'REACHABLE_CODE').length,
-    unreachable: allFindings.filter((finding) => finding.reachability === 'UNREACHABLE_NOISE').length,
-    unverified: allFindings.filter((finding) => (
+    reachable: activeFindings.filter((finding) => finding.reachability === 'REACHABLE_CODE').length,
+    unreachable: activeFindings.filter((finding) => finding.reachability === 'UNREACHABLE_NOISE').length,
+    unverified: activeFindings.filter((finding) => (
       !['REACHABLE_CODE', 'UNREACHABLE_NOISE'].includes(finding.reachability)
     )).length,
-  }), [allFindings]);
+  }), [activeFindings]);
   const trendScans = useMemo(() => scanHistory.slice(0, 10).reverse(), [scanHistory]);
   const trendMaxFindings = Math.max(
     1,
@@ -537,6 +554,7 @@ const LocalAnalyzer = () => {
     setScanResults([]);
     setAiFixPromptStatus('');
     setProjectFindings([]);
+    setDismissedFindingKeys(new Set());
     setScannerStatus(null);
     setProjectPolicyGate(null);
     setReachabilityStatus(null);
@@ -555,6 +573,7 @@ const LocalAnalyzer = () => {
     if (selectedFileId === id) setSelectedFileId(nextFiles[0]?.id || '');
     setScanResults([]);
     setProjectFindings([]);
+    setDismissedFindingKeys(new Set());
     setScannerStatus(null);
     setProjectPolicyGate(null);
     setReachabilityStatus(null);
@@ -573,10 +592,8 @@ const LocalAnalyzer = () => {
     setElapsedScanSeconds(0);
     setLastScanDurationMs(null);
     setAiFixPromptStatus('');
-    setFeedbackScanId(crypto.randomUUID());
-    setSubmittedFeedback({});
-    setFeedbackBusy({});
-    setFeedbackError('');
+    setScanReviewId(crypto.randomUUID());
+    setDismissedFindingKeys(new Set());
     setError('');
     setScanResults([]);
     setProjectFindings([]);
@@ -638,7 +655,7 @@ const LocalAnalyzer = () => {
           || `The live scan failed (HTTP ${scanError.response.status}). No report was generated.`);
       } else if (scanError.request) {
         setAnalyzerHealth('offline');
-        setError(`Could not reach the local AST analyzer at ${import.meta.env.VITE_ANALYZER_URL || 'http://127.0.0.1:8090'}. No report was generated; your selected files are unchanged.`);
+        setError(`Could not reach the AST analyzer at ${import.meta.env.VITE_ANALYZER_URL || '/analyzer'}. No report was generated; your selected files are unchanged.`);
       } else {
         setError(`${scanError.message || 'The live scan failed.'} No report was generated.`);
       }
@@ -649,48 +666,18 @@ const LocalAnalyzer = () => {
     }
   };
 
-  const submitFindingFeedback = async (finding, index, label) => {
-    const key = `${feedbackScanId}:${index}`;
-    if (!feedbackScanId || !user?.id) {
-      setFeedbackError('Sign in before submitting reviewed feedback.');
-      return;
-    }
-    const findingPath = String(finding.file || '').replace(/\\/g, '/').toLowerCase();
-    const sourceFile = files.find(
-      (file) => file.filePath.replace(/\\/g, '/').toLowerCase() === findingPath,
-    );
-    if (!sourceFile) {
-      setFeedbackError(`Could not find the source for ${finding.file || 'this finding'}.`);
-      return;
-    }
-    let sourceSnippet = sourceFile.source;
-    if (sourceSnippet.length > 16000) {
-      const sourceLines = sourceSnippet.split(/\r?\n/);
-      const findingLine = Number(finding.line) || 1;
-      sourceSnippet = sourceLines
-        .slice(Math.max(0, findingLine - 31), Math.min(sourceLines.length, findingLine + 30))
-        .join('\n')
-        .slice(0, 16000);
-    }
-    setFeedbackBusy((current) => ({ ...current, [key]: true }));
-    setFeedbackError('');
-    try {
-      await feedbackAPI.submit({
-        findingKey: key,
-        label,
-        sourceSnippet,
-        reason: '',
-      });
-      setSubmittedFeedback((current) => ({ ...current, [key]: label }));
-    } catch (submitError) {
-      setFeedbackError(
-        submitError.response?.data?.message
-          || submitError.response?.data?.detail
-          || 'Could not submit feedback. Please try again.',
-      );
-    } finally {
-      setFeedbackBusy((current) => ({ ...current, [key]: false }));
-    }
+  const dismissFinding = (index) => {
+    const key = findingReviewKey(scanReviewId, index);
+    setDismissedFindingKeys((current) => new Set(current).add(key));
+  };
+
+  const restoreFinding = (index) => {
+    const key = findingReviewKey(scanReviewId, index);
+    setDismissedFindingKeys((current) => {
+      const next = new Set(current);
+      next.delete(key);
+      return next;
+    });
   };
 
   const downloadSarif = () => {
@@ -733,8 +720,11 @@ const LocalAnalyzer = () => {
       policy_gate: projectPolicyGate,
       model: modelStatus,
       metrics: scanMetrics,
-      findings: allFindings.map((finding) => ({
+      findings: allFindings.map((finding, index) => ({
         ...finding,
+        user_disposition: dismissedFindingKeys.has(findingReviewKey(scanReviewId, index))
+          ? 'MARKED_FALSE_POSITIVE_FOR_THIS_SCAN'
+          : 'ACTIVE',
         risk_score: finding.combined_risk_score ?? finding.final_score ?? null,
         risk_score_status: (
           finding.combined_risk_score != null || finding.final_score != null
@@ -748,6 +738,7 @@ const LocalAnalyzer = () => {
         'Unknown and scanner-only language findings do not receive equivalent Python AST taint analysis.',
         'CPG-GNN output is file-level informational confidence, not a per-finding vulnerability probability.',
         'A missing risk score means the finding source did not provide a calibrated numeric score.',
+        'Findings manually marked false positive are omitted from this handoff only; they remain in the full scan JSON and are not suppressed in future scans.',
       ],
     };
     triggerDownload(
@@ -774,7 +765,7 @@ const LocalAnalyzer = () => {
     try {
       const response = await analyzerAPI.generateReport({
         metrics: scanMetrics,
-        findings: allFindings,
+        findings: activeFindings,
         format,
       });
       triggerDownload(response.data, `SECURITY_SUMMARY_REPORT.${format}`);
@@ -796,7 +787,13 @@ const LocalAnalyzer = () => {
     ? 'INCOMPLETE'
     : combinedGatePassed ? 'PASSED' : 'FAILED';
   const prioritySummary = useMemo(() => {
-    if (!allFindings.length) {
+    if (!activeFindings.length) {
+      if (dismissedFindings.length) {
+        return `All ${dismissedFindings.length} finding${dismissedFindings.length === 1 ? ' was' : 's were'} marked false positive for this scan. The original findings remain in the full JSON export.`;
+      }
+      if (parserDiagnostics.length) {
+        return `No confirmed security findings were returned. ${parserDiagnostics.length} parser diagnostic${parserDiagnostics.length === 1 ? '' : 's'} were reported and are not counted as vulnerabilities.`;
+      }
       return scanComplete
         ? 'No findings were returned by the completed checks. This does not guarantee the project is free of vulnerabilities.'
         : 'No findings have been reported by completed checks. Review scanner status below; some checks may be incomplete or unavailable.';
@@ -805,18 +802,18 @@ const LocalAnalyzer = () => {
     const priorities = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW']
       .filter((severity) => severityCounts[severity] > 0)
       .map((severity) => `${severityCounts[severity]} ${severity.toLowerCase()}`);
-    const unclassifiedCount = allFindings.length
+    const unclassifiedCount = activeFindings.length
       - Object.values(severityCounts).reduce((total, count) => total + count, 0);
     if (unclassifiedCount > 0) {
       priorities.push(`${unclassifiedCount} other/unrated`);
     }
     const affectedFiles = new Set(
-      allFindings
+      activeFindings
         .map((finding) => finding.file || finding.file_path)
         .filter(Boolean),
     );
     const ruleCounts = new Map();
-    for (const finding of allFindings) {
+    for (const finding of activeFindings) {
       const ruleValue = finding.rule_name || finding.title || finding.rule_id;
       const rule = ruleValue ? String(ruleValue) : '';
       if (rule) ruleCounts.set(rule, (ruleCounts.get(rule) || 0) + 1);
@@ -834,12 +831,12 @@ const LocalAnalyzer = () => {
       ? ' Address Critical and High findings first.'
       : ' Review the highest-severity findings first.';
 
-    return `The scan detected ${allFindings.length} finding${allFindings.length === 1 ? '' : 's'} across ${fileCount} file${fileCount === 1 ? '' : 's'}.${prioritiesText}${topRuleText}${recommendation}`;
-  }, [allFindings, scanComplete, severityCounts, successes.length]);
+    return `The scan detected ${activeFindings.length} finding${activeFindings.length === 1 ? '' : 's'} across ${fileCount} file${fileCount === 1 ? '' : 's'}.${prioritiesText}${topRuleText}${recommendation}`;
+  }, [activeFindings, dismissedFindings.length, scanComplete, severityCounts, successes.length]);
   const aiFixBrief = buildAiFixBrief({
     files,
     scanResults,
-    findings: allFindings,
+    findings: activeFindings,
     severityCounts,
     parserDiagnostics,
     scannerStatus,
@@ -848,6 +845,8 @@ const LocalAnalyzer = () => {
     modelStatus,
     scanMetrics,
     scanComplete,
+    scanFindingCount: allFindings.length,
+    dismissedFindingCount: dismissedFindings.length,
   });
   const aiFixPrompt = buildAiFixPrompt(aiFixBrief);
 
@@ -1029,7 +1028,7 @@ const LocalAnalyzer = () => {
                 <small>Static call-graph estimate; live execution is not collected.</small>
               </div>
               <div className="analyzer-summary__counts">
-                <strong>{allFindings.length}</strong><span>total findings</span>
+                <strong>{activeFindings.length}</strong><span>active findings</span>
               </div>
               <div className="analyzer-model-status">
                 <strong>{modelStatus?.name || 'ML model'}</strong>
@@ -1132,11 +1131,15 @@ const LocalAnalyzer = () => {
               <div className="analyzer-severity-summary__header">
                 <div>
                   <h3 id="severity-summary-title">Problems by severity</h3>
-                  <p>Counts reflect detected security findings, not parser diagnostics.</p>
+                  <p>
+                    {parserDiagnostics.length > 0
+                      ? `Counts below show confirmed security findings only. ${parserDiagnostics.length} parser diagnostic${parserDiagnostics.length === 1 ? '' : 's'} are listed separately.`
+                      : 'Counts reflect detected security findings, not parser diagnostics.'}
+                  </p>
                 </div>
                 <div className="analyzer-severity-card analyzer-severity-card--all">
-                  <strong>{allFindings.length}</strong>
-                  <span>All problems</span>
+                  <strong>{activeFindings.length}</strong>
+                  <span>{activeFindings.length === 0 && parserDiagnostics.length > 0 ? 'Confirmed findings' : 'All problems'}</span>
                 </div>
               </div>
               <div className="analyzer-severity-cards">
@@ -1155,7 +1158,7 @@ const LocalAnalyzer = () => {
                 <strong>Summary</strong>
                 <p>{prioritySummary}</p>
                 <span>
-                  Based on {allFindings.length} finding{allFindings.length === 1 ? '' : 's'} from this scan.
+                  Based on {activeFindings.length} active finding{activeFindings.length === 1 ? '' : 's'} from this scan.
                 </span>
               </div>
             </section>
@@ -1163,20 +1166,25 @@ const LocalAnalyzer = () => {
             <section className="analyzer-feedback" aria-labelledby="analyzer-feedback-title">
               <h3 id="analyzer-feedback-title">Review findings</h3>
               <p>
-                Explicitly confirmed feedback is sent to your AutoForge account for administrator review.
-                The source excerpt (up to 16,000 characters) is retained for possible model training.
+                Marking a false positive hides it from this scan&apos;s active results only.
+                It does not change the policy gate or suppress findings in future scans.
               </p>
-              {feedbackError && <p className="analyzer-error" role="alert">{feedbackError}</p>}
-              {allFindings.length === 0 ? (
+              {dismissedFindings.length > 0 && (
+                <p role="status">
+                  {dismissedFindings.length} finding{dismissedFindings.length === 1 ? ' is' : 's are'} marked
+                  false positive for this scan. Original findings remain in the full JSON export.
+                </p>
+              )}
+              {activeFindings.length === 0 ? (
                 <p className="analyzer-empty">No findings need review.</p>
               ) : (
                 <ul className="analyzer-feedback__list">
                   {allFindings.map((finding, index) => {
-                    const key = `${feedbackScanId}:${index}`;
-                    const isPython = String(finding.file || '').toLowerCase().endsWith('.py');
-                    const savedLabel = submittedFeedback[key];
+                    if (dismissedFindingKeys.has(findingReviewKey(scanReviewId, index))) {
+                      return null;
+                    }
                     return (
-                      <li className="analyzer-feedback__item" key={key}>
+                      <li className="analyzer-feedback__item" key={findingReviewKey(scanReviewId, index)}>
                         <div>
                           <strong>{finding.rule_id || 'Finding'}</strong>
                           <span>{finding.severity || 'Unrated'} · {finding.file || 'unknown file'}:{finding.line || '?'}</span>
@@ -1197,33 +1205,35 @@ const LocalAnalyzer = () => {
                             </small>
                           )}
                         </div>
-                        {savedLabel ? (
-                          <span role="status">Feedback submitted: {savedLabel.replaceAll('_', ' ')}</span>
-                        ) : (
-                          <div className="analyzer-feedback__actions">
-                            <button
-                              type="button"
-                              disabled={!isPython || feedbackBusy[key]}
-                              onClick={() => submitFindingFeedback(finding, index, 'FALSE_POSITIVE')}
-                            >
-                              Mark false positive
-                            </button>
-                            <button
-                              type="button"
-                              disabled={!isPython || feedbackBusy[key]}
-                              onClick={() => submitFindingFeedback(finding, index, 'CONFIRMED_VULNERABILITY')}
-                            >
-                              Confirm vulnerability
-                            </button>
-                          </div>
-                        )}
+                        <div className="analyzer-feedback__actions">
+                          <button type="button" onClick={() => dismissFinding(index)}>
+                            Mark false positive
+                          </button>
+                        </div>
                       </li>
                     );
                   })}
                 </ul>
               )}
-              {allFindings.some((finding) => !String(finding.file || '').toLowerCase().endsWith('.py')) && (
-                <small>Only Python findings can currently be submitted as GNN training examples.</small>
+              {dismissedFindings.length > 0 && (
+                <ul className="analyzer-feedback__list" aria-label="Findings marked false positive">
+                  {dismissedFindings.map(({ finding, index }) => (
+                    <li
+                      className="analyzer-feedback__item analyzer-feedback__item--dismissed"
+                      key={findingReviewKey(scanReviewId, index)}
+                    >
+                      <div>
+                        <strong>{finding.rule_id || 'Finding'} · Marked false positive</strong>
+                        <span>{finding.severity || 'Unrated'} · {finding.file || 'unknown file'}:{finding.line || '?'}</span>
+                      </div>
+                      <div className="analyzer-feedback__actions">
+                        <button type="button" onClick={() => restoreFinding(index)}>
+                          Undo
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
               )}
             </section>
 
@@ -1299,7 +1309,7 @@ const LocalAnalyzer = () => {
                       It does not call an AI service or edit, commit, or push your files.
                     </p>
                     {aiFixPromptStatus && <p className="analyzer-ai-fix-brief__status" role="status">{aiFixPromptStatus}</p>}
-                    {allFindings.length > 0 ? (
+                    {activeFindings.length > 0 ? (
                       <ol className="analyzer-ai-fix-brief__findings">
                         {aiFixBrief.findings.map((finding, index) => (
                           <li key={`${finding.file}-${finding.line}-${finding.rule_id}-${index}`}>

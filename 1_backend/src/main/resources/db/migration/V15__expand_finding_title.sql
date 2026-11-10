@@ -1,0 +1,2 @@
+ALTER TABLE findings
+    ALTER COLUMN title TYPE TEXT;

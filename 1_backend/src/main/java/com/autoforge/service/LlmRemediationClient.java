@@ -23,9 +23,9 @@ public class LlmRemediationClient {
 
     public LlmRemediationClient(
             RestClient.Builder builder,
-            @Value("${autoforge.remediation.endpoint:https://api.openai.com/v1/chat/completions}") String endpoint,
-            @Value("${autoforge.remediation.api-key:}") String apiKey,
-            @Value("${autoforge.remediation.model:}") String model
+            @Value("${AUTOFORGE_LLM_ENDPOINT:${autoforge.remediation.endpoint:https://api.openai.com/v1/chat/completions}}") String endpoint,
+            @Value("${AUTOFORGE_LLM_API_KEY:${autoforge.remediation.api-key:}}") String apiKey,
+            @Value("${AUTOFORGE_LLM_MODEL:${autoforge.remediation.model:}}") String model
     ) {
         this.restClient = builder.build();
         this.endpoint = endpoint;

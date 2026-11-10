@@ -15,7 +15,7 @@ from fastapi import FastAPI, HTTPException, Request
 
 _REPOSITORY = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 _SHA = re.compile(r"^[0-9a-fA-F]{40}$")
-SUPPORTED_ACTIONS = frozenset({"opened", "synchronize", "reopened"})
+SUPPORTED_ACTIONS = frozenset({"opened", "synchronize", "reopened", "ready_for_review"})
 
 
 @dataclass(frozen=True)

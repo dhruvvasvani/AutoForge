@@ -1,6 +1,8 @@
 services:
   postgres:
     image: postgres:16-alpine
+    ports:
+      - "127.0.0.1:5433:5432"
     environment:
       POSTGRES_DB: autoforge
       POSTGRES_USER: autoforge
@@ -17,6 +19,8 @@ services:
   redis:
     image: redis:7-alpine
     command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "127.0.0.1:6380:6379"
     volumes:
       - redis-data:/data
     healthcheck:
@@ -51,8 +55,13 @@ services:
       SPRING_DATASOURCE_USERNAME: autoforge
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
       REDIS_HOST: redis
+      AUTOFORGE_GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      AUTOFORGE_GITHUB_WEBHOOK_SECRET: ${AUTOFORGE_GITHUB_WEBHOOK_SECRET:?Set AUTOFORGE_GITHUB_WEBHOOK_SECRET in .env}
       AUTOFORGE_INTERNAL_TOKEN: ${AUTOFORGE_INTERNAL_TOKEN:?Set AUTOFORGE_INTERNAL_TOKEN in .env}
       AUTOFORGE_JWT_SECRET: ${AUTOFORGE_JWT_SECRET:?Set AUTOFORGE_JWT_SECRET in .env}
+      AUTOFORGE_GITHUB_PR_WEBHOOK_URL: ${AUTOFORGE_GITHUB_PR_WEBHOOK_URL:-http://webhook:8000/api/v1/github/events}
+    ports:
+      - "127.0.0.1:8089:8089"
     depends_on:
       postgres:
         condition: service_healthy
@@ -97,6 +106,8 @@ services:
       AUTOFORGE_AST_SERVICE_URL: http://analyzer-api:8090
       AUTOFORGE_BACKEND_URL: http://backend:8089
       AUTOFORGE_INTERNAL_SCAN_TOKEN: ${AUTOFORGE_INTERNAL_TOKEN:?Set AUTOFORGE_INTERNAL_TOKEN in .env}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      AUTOFORGE_PROGRESS_POST: "true"
       AUTOFORGE_AI_FIX_ENABLED: "false"
       AUTOFORGE_WORKSPACE_DIR: /workspace
     volumes:
@@ -116,9 +127,9 @@ services:
       dockerfile: 3_ast_analyzer/src/deployment/Dockerfile
     profiles: ["github"]
     environment:
-      WEBHOOK_SECRET: ${WEBHOOK_SECRET:-}
+      WEBHOOK_SECRET: ${AUTOFORGE_GITHUB_WEBHOOK_SECRET:?Set AUTOFORGE_GITHUB_WEBHOOK_SECRET in .env}
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
-      GITHUB_REPOSITORY: ${GITHUB_REPOSITORY:-}
+      GITHUB_REPOSITORIES: ${GITHUB_REPOSITORIES:-${GITHUB_REPOSITORY:-}}
       WEBHOOK_CORS_ORIGINS: ${WEBHOOK_CORS_ORIGINS:-}
       JOB_DB_PATH: /data/jobs.sqlite3
       FEEDBACK_PATH: /data/false_positive_feedback.jsonl
@@ -140,7 +151,7 @@ services:
     command: ["python", "-m", "src.deployment.worker"]
     environment:
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
-      GITHUB_REPOSITORY: ${GITHUB_REPOSITORY:-}
+      GITHUB_REPOSITORIES: ${GITHUB_REPOSITORIES:-${GITHUB_REPOSITORY:-}}
       JOB_DB_PATH: /data/jobs.sqlite3
       FEEDBACK_PATH: /data/false_positive_feedback.jsonl
       METRICS_PORT: "8001"

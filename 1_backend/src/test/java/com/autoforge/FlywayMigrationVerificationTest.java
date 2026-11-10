@@ -22,13 +22,16 @@ class FlywayMigrationVerificationTest {
         MigrationInfo[] migrations = flyway.info().all();
         assertTrue(migrations.length >= 13, "Expected at least 13 migration files, found: " + migrations.length);
 
-        Set<String> seenVersions = new HashSet<>();
+        Set<Integer> seenVersions = new HashSet<>();
         for (MigrationInfo migration : migrations) {
-            String version = migration.getVersion().getVersion();
+            int version = migration.getVersion().getMajor().intValueExact();
             assertFalse(seenVersions.contains(version), "Duplicate migration version detected: " + version);
             seenVersions.add(version);
         }
 
-        assertEquals(13, seenVersions.size(), "Expected exactly 13 unique sequential migration versions");
+        assertEquals(migrations.length, seenVersions.size(), "Migration versions must be unique");
+        for (int version = 1; version <= migrations.length; version++) {
+            assertTrue(seenVersions.contains(version), "Missing sequential migration version: " + version);
+        }
     }
 }

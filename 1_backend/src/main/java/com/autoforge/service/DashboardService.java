@@ -66,6 +66,8 @@ public class DashboardService {
                             .status(scan.getStatus().name())
                             .errorMessage(scan.getErrorMessage())
                             .progress(scan.getProgress())
+                            .progressStage(scan.getProgressStage())
+                            .progressMessage(scan.getProgressMessage())
                             .createdAt(scan.getCreatedAt())
                             .completedAt(scan.getCompletedAt())
                             .build();

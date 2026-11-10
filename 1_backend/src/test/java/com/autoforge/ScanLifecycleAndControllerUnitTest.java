@@ -146,6 +146,41 @@ public class ScanLifecycleAndControllerUnitTest {
     }
 
     @Test
+    void scanProgressUpdatesPersistStageMessageAndRunningState() {
+        Scan scan = new Scan();
+        scan.setId(204L);
+        scan.setStatus(ScanStatus.QUEUED);
+        when(scanRepository.findById(204L)).thenReturn(Optional.of(scan));
+        when(scanRepository.save(any(Scan.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        ScanJobResponse response = scanService.updateScanProgress(204L, "SEMGREP_DONE", "2 findings");
+
+        assertEquals("RUNNING", response.getStatus());
+        assertEquals("SEMGREP_DONE", response.getProgressStage());
+        assertEquals("2 findings", response.getProgressMessage());
+        assertEquals(35, response.getProgress());
+        assertNotNull(scan.getStartedAt());
+    }
+
+    @Test
+    void progressEventsCannotReopenCompletedScans() {
+        Scan scan = new Scan();
+        scan.setId(205L);
+        scan.setStatus(ScanStatus.COMPLETED);
+        scan.setProgress(100);
+        scan.setProgressStage("COMPLETED");
+        scan.setProgressMessage("Security scan completed.");
+        when(scanRepository.findById(205L)).thenReturn(Optional.of(scan));
+
+        ScanJobResponse response = scanService.updateScanProgress(205L, "AST_DONE", "late event");
+
+        assertEquals("COMPLETED", response.getStatus());
+        assertEquals("COMPLETED", response.getProgressStage());
+        assertEquals("Security scan completed.", response.getProgressMessage());
+        verify(scanRepository, never()).save(any(Scan.class));
+    }
+
+    @Test
     void testGetScanResultsDetail() {
         Scan scan = new Scan();
         scan.setId(303L);

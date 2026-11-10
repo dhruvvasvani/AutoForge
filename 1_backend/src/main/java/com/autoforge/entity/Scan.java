@@ -48,6 +48,12 @@ public class Scan {
     @Column(name = "progress")
     private Integer progress = 0;
 
+    @Column(name = "progress_stage", length = 64)
+    private String progressStage;
+
+    @Column(name = "progress_message", columnDefinition = "TEXT")
+    private String progressMessage;
+
     @Column(name = "idempotency_key", length = 128)
     private String idempotencyKey;
 
