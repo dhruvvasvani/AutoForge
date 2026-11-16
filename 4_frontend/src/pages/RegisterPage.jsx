@@ -1,9 +1,11 @@
-import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import { useState } from 'react';
+import { useLocation, useNavigate, Link } from 'react-router-dom';
+import { useAuth } from '../context/useAuth';
+import './AuthPage.css';
 
 const RegisterPage = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { register, loading, error, clearError } = useAuth();
 
   const [formData, setFormData] = useState({
@@ -13,7 +15,7 @@ const RegisterPage = () => {
     confirmPassword: '',
   });
 
-  const [validationError, setValidationError] = useState('');
+  const [validationError, setValidationError] = useState(location.state?.message || '');
   const [agreeToTerms, setAgreeToTerms] = useState(false);
 
   const handleChange = (e) => {
@@ -75,22 +77,22 @@ const RegisterPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-600 to-blue-800 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full bg-white rounded-lg shadow-md">
-        <div className="text-center pt-8 px-6">
-          <h1 className="text-3xl font-bold text-gray-900">AutoForge</h1>
-          <p className="mt-2 text-gray-600">Create an account</p>
-        </div>
+    <main className="auth-page">
+      <section className="auth-card">
+        <header className="auth-card__header">
+          <h1>AutoForge</h1>
+          <p>Create an account</p>
+        </header>
 
-        <form onSubmit={handleSubmit} className="mt-8 px-6 pb-8">
+        <form onSubmit={handleSubmit} className="auth-form">
           {(error || validationError) && (
-            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md">
-              <p className="text-red-600 text-sm">{error || validationError}</p>
+            <div className="auth-error" role="alert">
+              <p>{error || validationError}</p>
             </div>
           )}
 
-          <div className="mb-4">
-            <label htmlFor="username" className="block text-sm font-medium text-gray-700">
+          <div className="auth-field">
+            <label htmlFor="username">
               Username
             </label>
             <input
@@ -100,13 +102,13 @@ const RegisterPage = () => {
               value={formData.username}
               onChange={handleChange}
               placeholder="yourname"
-              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+              className="auth-input"
               disabled={loading}
             />
           </div>
 
-          <div className="mb-4">
-            <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+          <div className="auth-field">
+            <label htmlFor="email">
               Email Address
             </label>
             <input
@@ -116,13 +118,13 @@ const RegisterPage = () => {
               value={formData.email}
               onChange={handleChange}
               placeholder="you@example.com"
-              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+              className="auth-input"
               disabled={loading}
             />
           </div>
 
-          <div className="mb-4">
-            <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+          <div className="auth-field">
+            <label htmlFor="password">
               Password
             </label>
             <input
@@ -132,14 +134,14 @@ const RegisterPage = () => {
               value={formData.password}
               onChange={handleChange}
               placeholder="••••••••"
-              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+              className="auth-input"
               disabled={loading}
             />
-            <p className="mt-1 text-xs text-gray-500">At least 8 characters</p>
+            <p className="auth-field__hint">At least 8 characters</p>
           </div>
 
-          <div className="mb-4">
-            <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700">
+          <div className="auth-field">
+            <label htmlFor="confirmPassword">
               Confirm Password
             </label>
             <input
@@ -149,22 +151,22 @@ const RegisterPage = () => {
               value={formData.confirmPassword}
               onChange={handleChange}
               placeholder="••••••••"
-              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+              className="auth-input"
               disabled={loading}
             />
           </div>
 
-          <div className="mb-6">
-            <label className="flex items-center">
+          <div className="auth-terms">
+            <label>
               <input
                 type="checkbox"
                 checked={agreeToTerms}
                 onChange={(e) => setAgreeToTerms(e.target.checked)}
-                className="h-4 w-4 text-blue-600 border-gray-300 rounded"
+                className="auth-checkbox"
               />
-              <span className="ml-2 text-sm text-gray-700">
+              <span>
                 I agree to the{' '}
-                <a href="#" className="text-blue-600 hover:text-blue-700">
+                <a href="#" className="auth-link">
                   Terms of Service
                 </a>
               </span>
@@ -174,28 +176,27 @@ const RegisterPage = () => {
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-md transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="auth-submit"
           >
             {loading ? 'Creating Account...' : 'Sign Up'}
           </button>
 
-          <p className="mt-4 text-center text-gray-600 text-sm">
+          <p className="auth-helper">
             Already have an account?{' '}
-            <Link to="/login" className="text-blue-600 hover:text-blue-700 font-medium">
+            <Link to="/login" className="auth-link">
               Log In
             </Link>
           </p>
         </form>
 
-        <div className="px-6 py-4 bg-gray-50 rounded-b-lg border-t border-gray-200">
-          <p className="text-xs text-gray-500 text-center">
+        <footer className="auth-card__footer">
+          <p>
             © 2026 AutoForge. All rights reserved.
           </p>
-        </div>
-      </div>
-    </div>
+        </footer>
+      </section>
+    </main>
   );
 };
 
 export default RegisterPage;
-

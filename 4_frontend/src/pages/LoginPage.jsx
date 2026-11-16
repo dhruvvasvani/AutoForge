@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import { useState } from 'react';
+import { useLocation, useNavigate, Link } from 'react-router-dom';
+import { useAuth } from '../context/useAuth';
+import './AuthPage.css';
 
 const LoginPage = () => {
+  const location = useLocation();
   const navigate = useNavigate();
   const { login, loading, error, clearError } = useAuth();
 
@@ -11,7 +13,7 @@ const LoginPage = () => {
     password: '',
   });
 
-  const [validationError, setValidationError] = useState('');
+  const [validationError, setValidationError] = useState(location.state?.message || '');
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -47,22 +49,22 @@ const LoginPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-600 to-blue-800 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full bg-white rounded-lg shadow-md">
-        <div className="text-center pt-8 px-6">
-          <h1 className="text-3xl font-bold text-gray-900">AutoForge</h1>
-          <p className="mt-2 text-gray-600">Security Scan & Fix Platform</p>
-        </div>
+    <main className="auth-page">
+      <section className="auth-card">
+        <header className="auth-card__header">
+          <h1>AutoForge</h1>
+          <p>Security Scan &amp; Fix Platform</p>
+        </header>
 
-        <form onSubmit={handleSubmit} className="mt-8 px-6 pb-8">
+        <form onSubmit={handleSubmit} className="auth-form">
           {(error || validationError) && (
-            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md">
-              <p className="text-red-600 text-sm">{error || validationError}</p>
+            <div className="auth-error" role="alert">
+              <p>{error || validationError}</p>
             </div>
           )}
 
-          <div className="mb-4">
-            <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+          <div className="auth-field">
+            <label htmlFor="email">
               Email Address
             </label>
             <input
@@ -72,13 +74,13 @@ const LoginPage = () => {
               value={formData.email}
               onChange={handleChange}
               placeholder="you@example.com"
-              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+              className="auth-input"
               disabled={loading}
             />
           </div>
 
-          <div className="mb-6">
-            <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+          <div className="auth-field">
+            <label htmlFor="password">
               Password
             </label>
             <input
@@ -88,7 +90,7 @@ const LoginPage = () => {
               value={formData.password}
               onChange={handleChange}
               placeholder="••••••••"
-              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+              className="auth-input"
               disabled={loading}
             />
           </div>
@@ -96,34 +98,33 @@ const LoginPage = () => {
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-md transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="auth-submit"
           >
             {loading ? 'Logging in...' : 'Log In'}
           </button>
 
-          <p className="mt-4 text-center text-gray-600 text-sm">
+          <p className="auth-helper">
             Don't have an account?{' '}
-            <Link to="/register" className="text-blue-600 hover:text-blue-700 font-medium">
+            <Link to="/register" className="auth-link">
               Sign Up
             </Link>
           </p>
 
-          <p className="mt-2 text-center text-gray-600 text-sm">
-            <a href="#" className="text-blue-600 hover:text-blue-700">
+          <p className="auth-helper">
+            <a href="#" className="auth-link">
               Forgot your password?
             </a>
           </p>
         </form>
 
-        <div className="px-6 py-4 bg-gray-50 rounded-b-lg border-t border-gray-200">
-          <p className="text-xs text-gray-500 text-center">
+        <footer className="auth-card__footer">
+          <p>
             © 2026 AutoForge. All rights reserved.
           </p>
-        </div>
-      </div>
-    </div>
+        </footer>
+      </section>
+    </main>
   );
 };
 
 export default LoginPage;
-

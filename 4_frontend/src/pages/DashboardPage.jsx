@@ -1,10 +1,53 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useAuth } from '../context/AuthContext';
-import { repositoryAPI, scanAPI } from '../api/client';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/useAuth';
+import { repositoryAPI, scanAPI, remediationAPI } from '../api/client';
 import LocalAnalyzer from '../components/LocalAnalyzer';
 import './DashboardPage.css';
 
 const ACTIVE_SCAN_STATES = new Set(['QUEUED', 'RUNNING']);
+const PIPELINE_STEPS = ['Ingest', 'SAST', 'AST Reachability', 'Completed'];
+const GITHUB_REPOSITORY_PATTERN = /^[A-Za-z0-9_-][A-Za-z0-9_.-]*\/[A-Za-z0-9_-][A-Za-z0-9_.-]*$/;
+const NO_DISMISSED_FINDINGS = new Set();
+
+function normalizeGitHubRepository(value) {
+  const input = value.trim();
+  let repository = input;
+
+  if (/^(https?:\/\/|www\.|github\.com\/)/i.test(input)) {
+    let url;
+    try {
+      url = new URL(input.startsWith('www.') || input.startsWith('github.com/') ? `https://${input}` : input);
+    } catch {
+      return null;
+    }
+
+    if (
+      !['http:', 'https:'].includes(url.protocol)
+      || url.hostname.toLowerCase() !== 'github.com'
+      || url.port
+      || url.username
+      || url.password
+      || url.search
+      || url.hash
+    ) {
+      return null;
+    }
+
+    repository = url.pathname.replace(/^\/|\/$/g, '').replace(/\.git$/i, '');
+  }
+
+  return GITHUB_REPOSITORY_PATTERN.test(repository) ? repository : null;
+}
+
+const progressStepIndex = (stage) => {
+  if (!stage) return -1;
+  if (['JOB_RECEIVED', 'REPO_CLONED'].includes(stage)) return 0;
+  if (['SEMGREP_DONE', 'CHECKOV_DONE'].includes(stage)) return 1;
+  if (stage === 'AST_DONE') return 2;
+  if (['RESULTS_POSTED', 'COMPLETED'].includes(stage)) return 3;
+  return -1;
+};
 
 function RepositoryScanProgress({ repository }) {
   const [scans, setScans] = useState([]);
@@ -12,8 +55,12 @@ function RepositoryScanProgress({ repository }) {
   const [triggering, setTriggering] = useState(false);
   const [scanMessage, setScanMessage] = useState('');
   const [findings, setFindings] = useState([]);
+  const [dismissalState, setDismissalState] = useState({ scanId: null, ids: NO_DISMISSED_FINDINGS });
   const [findingsError, setFindingsError] = useState('');
-
+  const [liveProgress, setLiveProgress] = useState(null);
+const [remediations, setRemediations] = useState({});
+const [fixLoading, setFixLoading] = useState({});
+const [fixErrors, setFixErrors] = useState({});
   useEffect(() => {
     let active = true;
     let timer;
@@ -42,6 +89,29 @@ function RepositoryScanProgress({ repository }) {
   const latest = scans[0];
   const latestScanId = latest?.id;
   const latestScanStatus = latest?.status;
+  const dismissedFindingIds = dismissalState.scanId === latestScanId
+    ? dismissalState.ids
+    : NO_DISMISSED_FINDINGS;
+  const activeFindings = findings.filter(
+    (finding) => !dismissedFindingIds.has(String(finding.id)),
+  );
+  const dismissedFindings = findings.filter(
+    (finding) => dismissedFindingIds.has(String(finding.id)),
+  );
+
+  useEffect(() => {
+    if (!latestScanId) return undefined;
+    return scanAPI.subscribeToProgress(
+      latestScanId,
+      (event) => setLiveProgress({ scanId: latestScanId, ...event }),
+    );
+  }, [latestScanId]);
+
+  const currentLiveProgress = liveProgress?.scanId === latestScanId ? liveProgress : null;
+  const progressStage = currentLiveProgress?.stage || latest?.progressStage || latest?.progress_stage;
+  const progressMessage = currentLiveProgress?.message || latest?.progressMessage || latest?.progress_message;
+  const commitSha = latest?.commitSha || latest?.commit_sha;
+  const activeStep = progressStepIndex(progressStage);
   useEffect(() => {
     if (!latestScanId || latestScanStatus !== 'COMPLETED') return undefined;
     let active = true;
@@ -59,16 +129,92 @@ function RepositoryScanProgress({ repository }) {
       active = false;
     };
   }, [latestScanId, latestScanStatus]);
+  const handleGenerateFix = async (findingId) => {
+    setFixLoading((current) => ({ ...current, [findingId]: true }));
+    setFixErrors((current) => ({ ...current, [findingId]: '' }));
+
+    try {
+      const previewResponse = await remediationAPI.preview(findingId);
+      const generateResponse = await remediationAPI.generate(findingId);
+
+      const remediation = generateResponse.data;
+      const patchResponse = await remediationAPI.getPatch(remediation.id);
+
+      setRemediations((current) => ({
+        ...current,
+        [findingId]: {
+          ...remediation,
+          preview: previewResponse.data,
+          patch: patchResponse.data,
+        },
+      }));
+    } catch (err) {
+      setFixErrors((current) => ({
+        ...current,
+        [findingId]:
+          err.response?.data?.message ||
+          err.response?.data?.detail ||
+          'Could not generate AI fix.',
+      }));
+    } finally {
+      setFixLoading((current) => ({ ...current, [findingId]: false }));
+    }
+  };
+  const handleRemediationAction = async (findingId, action) => {
+    const remediation = remediations[findingId];
+
+    if (!remediation?.id) return;
+
+    const loadingKey = `${findingId}-${action}`;
+
+    setFixLoading((current) => ({
+      ...current,
+      [loadingKey]: true,
+    }));
+
+    setFixErrors((current) => ({
+      ...current,
+      [findingId]: '',
+    }));
+
+    try {
+      const response = await remediationAPI[action](remediation.id);
+
+      setRemediations((current) => ({
+        ...current,
+        [findingId]: {
+          ...current[findingId],
+          status: response.data?.status || current[findingId].status,
+          actionResult: response.data,
+        },
+      }));
+    } catch (err) {
+      setFixErrors((current) => ({
+        ...current,
+        [findingId]:
+          err.response?.data?.message ||
+          err.response?.data?.detail ||
+          `Could not ${action} remediation.`,
+      }));
+    } finally {
+      setFixLoading((current) => ({
+        ...current,
+        [loadingKey]: false,
+      }));
+    }
+  };
 
   const triggerScan = async () => {
     setTriggering(true);
     setError('');
     setScanMessage('');
     setFindings([]);
+    setDismissalState({ scanId: null, ids: NO_DISMISSED_FINDINGS });
     setFindingsError('');
     try {
       const response = await scanAPI.triggerScan(repository.id);
-      setScanMessage(`Queued scan for commit ${response.data.commitSha?.slice(0, 10) || 'latest'}.`);
+      const commit = response.data.commitSha || response.data.commit_sha;
+      setScanMessage(`Queued scan for commit ${commit?.slice(0, 10) || 'latest'}.`);
       try {
         const history = await repositoryAPI.getScanHistory(repository.id);
         setScans(history.data || []);
@@ -78,8 +224,9 @@ function RepositoryScanProgress({ repository }) {
     } catch (scanError) {
       setError(
         scanError.response?.data?.message
+          || (Array.isArray(scanError.response?.data?.messages) ? scanError.response.data.messages[0] : null)
           || scanError.response?.data?.detail
-          || 'Could not fetch and queue the latest GitHub commit. Public repositories only; check backend and Redis status.',
+          || 'Could not fetch and queue the latest GitHub commit. Check the repository URL, GitHub access, backend, and Redis status.',
       );
     } finally {
       setTriggering(false);
@@ -128,23 +275,50 @@ function RepositoryScanProgress({ repository }) {
           <span className={`dashboard-scan-progress__status is-${latest.status.toLowerCase()}`}>
             {latest.status}
           </span>
-          <strong>{latest.progressStage || latest.status}</strong>
-          <p>{latest.progressMessage || (ACTIVE_SCAN_STATES.has(latest.status)
+          <strong>{progressStage || latest.status}</strong>
+          <p>{progressMessage || (ACTIVE_SCAN_STATES.has(latest.status)
             ? 'Waiting for worker progress…'
-            : `Commit ${latest.commitSha?.slice(0, 10) || 'unknown'}`)}</p>
+            : `Commit ${commitSha?.slice(0, 10) || 'unknown'}`)}</p>
           {ACTIVE_SCAN_STATES.has(latest.status) && (
-            <progress aria-label={`Scan ${latest.id} progress`} />
+            <>
+              <ol className="dashboard-scan-steps" aria-label="Security scan pipeline">
+                {PIPELINE_STEPS.map((step, index) => (
+                  <li
+                    key={step}
+                    className={index < activeStep
+                      ? 'is-complete'
+                      : index === activeStep
+                        ? 'is-active'
+                        : ''}
+                  >
+                    {step}
+                  </li>
+                ))}
+              </ol>
+              <progress
+                aria-label={`Scan ${latest.id} progress`}
+                value={latest.progress ?? 0}
+                max="100"
+              />
+            </>
           )}
         </>
       ) : null}
       {latest?.status === 'COMPLETED' && (
         <section className="dashboard-scan-findings" aria-label="AST scan findings">
-          <strong>Findings for commit {latest.commitSha?.slice(0, 10) || 'unknown'}</strong>
+          <strong>Findings for commit {commitSha?.slice(0, 10) || 'unknown'}</strong>
+          <small>
+            {activeFindings.length} active finding(s)
+            {dismissedFindings.length
+              ? ` · ${dismissedFindings.length} marked false positive for this scan`
+              : ''}
+          </small>
+          <small>Dismissals are temporary, do not change the scan policy result, and reset on a new scan.</small>
           {findingsError ? (
             <p role="status">{findingsError}</p>
-          ) : findings.length ? (
+          ) : activeFindings.length ? (
             <ul>
-              {findings.map((finding) => (
+              {activeFindings.map((finding) => (
                 <li key={finding.id}>
                   <span>{finding.severity || 'Unrated'} · {finding.ruleId || 'Finding'}</span>
                   <code>{finding.filePath || 'unknown file'}:{finding.lineNumber || '?'}</code>
@@ -157,12 +331,114 @@ function RepositoryScanProgress({ repository }) {
                     {finding.priority ? ` · ${finding.priority}` : ''}
                     {finding.sourceScanner ? ` · ${finding.sourceScanner}` : ''}
                   </small>
+                  {Number.isFinite(finding.cpgGnnFileConfidence) && (
+                    <small>
+                      CPG-GNN file confidence: {(finding.cpgGnnFileConfidence * 100).toFixed(1)}% (informational)
+                    </small>
+                  )}
+
+
                   {finding.description && <p>{finding.description}</p>}
+                  <button
+                    type="button"
+                    className="dashboard-scan-findings__action"
+                    onClick={() => handleGenerateFix(finding.id)}
+                    disabled={Boolean(fixLoading[finding.id])}
+                  >
+                    {fixLoading[finding.id]
+                      ? 'Generating AI Fix...'
+                      : 'Generate AI Fix'}
+                  </button>
+
+                  {fixErrors[finding.id] && (
+                    <p role="alert">{fixErrors[finding.id]}</p>
+                  )}
+
+                  {remediations[finding.id] && (
+                    <div className="ai-fix-preview">
+                      <h4>AI Suggested Fix</h4>
+
+                      <p>Status: {remediations[finding.id].status}</p>
+
+                      <pre style={{
+                        whiteSpace: 'pre-wrap',
+                        overflowX: 'auto'
+                      }}>
+                        {remediations[finding.id].patch}
+                      </pre>
+
+                      <button
+                        type="button"
+                        onClick={() => handleRemediationAction(finding.id, 'approve')}
+                        disabled={Boolean(fixLoading[`${finding.id}-approve`])}
+                      >
+                        Approve
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleRemediationAction(finding.id, 'reject')}
+                        disabled={Boolean(fixLoading[`${finding.id}-reject`])}
+                      >
+                        Reject
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleRemediationAction(finding.id, 'createPR')}
+                        disabled={Boolean(fixLoading[`${finding.id}-createPR`])}
+                      >
+                        Create Pull Request
+                      </button>
+                    </div>
+                  )}
+                  {/* Mark finding as false positive */}
+                  <button
+                    type="button"
+                    className="dashboard-scan-findings__action"
+                    onClick={() => setDismissalState((current) => {
+                      const ids = current.scanId === latestScanId
+                        ? new Set(current.ids)
+                        : new Set();
+
+                      ids.add(String(finding.id));
+
+                      return { scanId: latestScanId, ids };
+                    })}
+                  >
+                    Mark false positive
+                  </button>
+
                 </li>
               ))}
             </ul>
-          ) : (
+          ) : findings.length === 0 ? (
             <p>No findings were persisted for this scan.</p>
+          ) : (
+            <p>All findings are marked false positive for this scan.</p>
+          )}
+          {dismissedFindings.length > 0 && (
+            <ul aria-label="Findings marked false positive">
+              {dismissedFindings.map((finding) => (
+                <li key={finding.id}>
+                  <span>{finding.severity || 'Unrated'} · {finding.ruleId || 'Finding'} · Marked false positive</span>
+                  <code>{finding.filePath || 'unknown file'}:{finding.lineNumber || '?'}</code>
+                  <button
+                    type="button"
+                    className="dashboard-scan-findings__action"
+                    onClick={() => setDismissalState((current) => {
+                      const ids = current.scanId === latestScanId
+                        ? new Set(current.ids)
+                        : new Set();
+                      ids.delete(String(finding.id));
+                      return { scanId: latestScanId, ids };
+                    })}
+                  >
+                    Undo
+                  </button>
+                </li>
+              ))}
+            </ul>
           )}
         </section>
       )}
@@ -171,6 +447,7 @@ function RepositoryScanProgress({ repository }) {
 }
 
 const DashboardPage = () => {
+  const navigate = useNavigate();
   const { user, logout } = useAuth();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -181,9 +458,19 @@ const DashboardPage = () => {
 
   const fetchDashboardData = useCallback(() => repositoryAPI.getAll(), []);
   const reportRepositoryError = useCallback((err) => {
+    if (err.response?.status === 401 || err.response?.status === 403) {
+      logout();
+      navigate('/register', {
+        replace: true,
+        state: {
+          message: 'Your previous demo session is not in the new PostgreSQL database. Create your account again to continue.',
+        },
+      });
+      return;
+    }
     setError(err.response?.data?.message || 'Could not load repositories. Check that the backend is running.');
     console.error('Dashboard error:', err);
-  }, []);
+  }, [logout, navigate]);
 
   useEffect(() => {
     let active = true;
@@ -217,9 +504,9 @@ const DashboardPage = () => {
 
   const connectRepository = async (event) => {
     event.preventDefault();
-    const githubRepoFullName = repositoryInput.trim();
-    if (!/^[A-Za-z0-9_-][A-Za-z0-9_.-]*\/[A-Za-z0-9_-][A-Za-z0-9_.-]*$/.test(githubRepoFullName)) {
-      setRepositoryActionError('Enter a GitHub repository as owner/repository.');
+    const githubRepoFullName = normalizeGitHubRepository(repositoryInput);
+    if (!githubRepoFullName) {
+      setRepositoryActionError('Enter a GitHub repository as owner/repository or paste its github.com URL.');
       return;
     }
     setConnectingRepository(true);
@@ -292,14 +579,14 @@ const DashboardPage = () => {
           <div className="dashboard-repositories__header">
             <h2>Your Repositories</h2>
             <form className="dashboard-repository-connect" onSubmit={connectRepository}>
-              <label htmlFor="github-repository">Public GitHub repository</label>
+              <label htmlFor="github-repository">GitHub repository</label>
               <div>
                 <input
                   id="github-repository"
                   name="github-repository"
                   value={repositoryInput}
                   onChange={(event) => setRepositoryInput(event.target.value)}
-                  placeholder="owner/repository"
+                  placeholder="owner/repository or GitHub URL"
                   maxLength={201}
                   disabled={connectingRepository}
                 />
@@ -308,7 +595,7 @@ const DashboardPage = () => {
                 </button>
               </div>
               {repositoryActionError && <p role="alert">{repositoryActionError}</p>}
-              <small>Public repositories only; private access is not configured.</small>
+              <small>Public repositories work without a token. Private repositories need a server-side GITHUB_TOKEN with Contents: read access.</small>
             </form>
           </div>
           <div className="dashboard-repositories__list">

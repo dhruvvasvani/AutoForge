@@ -21,7 +21,7 @@
 
 .dashboard-header h1 {
   margin: 0;
-  color: #f3f4f8;
+  color: var(--bright-green);
   font-size: 21px;
   font-weight: 700;
   letter-spacing: -0.3px;
@@ -58,16 +58,16 @@
 .dashboard-logout,
 .dashboard-retry {
   padding: 8px 12px;
-  border: 1px solid #57313b;
+  border: 1px solid rgba(255, 0, 40, 0.55);
   border-radius: 7px;
-  color: #ffc0c3;
-  background: #26151a;
+  color: #ff526d;
+  background: rgba(255, 0, 40, 0.1);
   font-size: 12px;
 }
 
 .dashboard-logout:hover,
 .dashboard-retry:hover {
-  background: #351a21;
+  background: rgba(255, 0, 40, 0.18);
 }
 
 .dashboard-main {
@@ -79,10 +79,10 @@
 .dashboard-repository-error {
   margin-bottom: 20px;
   padding: 14px;
-  border: 1px solid #66313a;
+  border: 1px solid rgba(255, 0, 40, 0.55);
   border-radius: 9px;
-  color: #ffc1c4;
-  background: #27171b;
+  color: #ff526d;
+  background: rgba(255, 0, 40, 0.1);
 }
 
 .dashboard-repository-error p {
@@ -140,12 +140,17 @@
 
 .dashboard-repository-connect button {
   padding: 7px 10px;
-  border: 1px solid #3c4b60;
+  border: 1px solid var(--bright-green);
   border-radius: 7px;
-  color: #d7dded;
-  background: #182332;
+  color: #080b11;
+  background: var(--bright-green);
   font-size: 11px;
   cursor: pointer;
+}
+
+.dashboard-repository-connect button:hover:not(:disabled) {
+  border-color: #d7ff32;
+  background: #d7ff32;
 }
 
 .dashboard-repository-connect button:disabled {
@@ -207,18 +212,18 @@
 
 .dashboard-scan-progress__status.is-running,
 .dashboard-scan-progress__status.is-queued {
-  border-color: #5c4b89;
-  color: #d3c2ff;
+  border-color: var(--power-blue);
+  color: #b7adff;
 }
 
 .dashboard-scan-progress__status.is-completed {
-  border-color: #315345;
-  color: #8ed7ad;
+  border-color: var(--deep-green);
+  color: var(--bright-green);
 }
 
 .dashboard-scan-progress__status.is-failed {
-  border-color: #63333c;
-  color: #ff9ca2;
+  border-color: var(--electric-red);
+  color: #ff526d;
 }
 
 .dashboard-scan-progress strong {
@@ -235,7 +240,30 @@
 
 .dashboard-scan-progress progress {
   height: 5px;
-  accent-color: #a78bfa;
+  accent-color: var(--bright-green);
+}
+
+.dashboard-scan-steps {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 5px;
+  margin: 3px 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dashboard-scan-steps li {
+  padding-top: 5px;
+  border-top: 2px solid #303846;
+  color: #788496;
+  font-size: 9px;
+}
+
+.dashboard-scan-steps li.is-complete,
+.dashboard-scan-steps li.is-active {
+  border-color: var(--bright-green);
+  color: var(--bright-green);
 }
 
 .dashboard-scan-findings {
@@ -268,7 +296,7 @@
   display: grid;
   gap: 4px;
   padding: 8px;
-  border-left: 2px solid #806ab5;
+  border-left: 2px solid var(--power-blue);
   background: #111925;
 }
 
@@ -286,20 +314,36 @@
   font-size: 10px;
 }
 
+.dashboard-scan-findings__action {
+  justify-self: start;
+  padding: 5px 8px;
+  border: 1px solid #4a3e6e;
+  border-radius: 6px;
+  color: #e2d9ff;
+  background: #211b35;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.dashboard-scan-findings__action:hover {
+  border-color: #9c87d6;
+  background: #2a2241;
+}
+
 .dashboard-scan-button {
   justify-self: start;
   padding: 7px 10px;
-  border: 1px solid #3c4b60;
+  border: 1px solid var(--bright-green);
   border-radius: 7px;
-  color: #d7dded;
-  background: #182332;
+  color: #080b11;
+  background: var(--bright-green);
   font-size: 11px;
   cursor: pointer;
 }
 
 .dashboard-scan-button:hover:not(:disabled) {
-  border-color: #8470bb;
-  background: #211d34;
+  border-color: #d7ff32;
+  background: #d7ff32;
 }
 
 .dashboard-scan-button:disabled {
@@ -334,7 +378,7 @@
   height: 34px;
   margin-bottom: 12px;
   border: 3px solid #242c38;
-  border-top-color: #a78bfa;
+  border-top-color: var(--bright-green);
   border-radius: 50%;
   animation: dashboard-spin 750ms linear infinite;
 }

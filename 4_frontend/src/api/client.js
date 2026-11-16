@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8089/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
@@ -10,14 +10,10 @@ const apiClient = axios.create({
 });
 
 const analyzerClient = axios.create({
-  baseURL: import.meta.env.VITE_ANALYZER_URL || 'http://127.0.0.1:8090',
+  baseURL: import.meta.env.VITE_ANALYZER_URL || '/analyzer',
   headers: {
     'Content-Type': 'application/json',
   },
-});
-
-const webhookClient = axios.create({
-  baseURL: import.meta.env.VITE_WEBHOOK_URL || 'http://127.0.0.1:8091',
 });
 
 apiClient.interceptors.request.use(
@@ -103,6 +99,22 @@ export const scanAPI = {
 
   getScanStatus: (scanId) =>
     apiClient.get(`/scans/${scanId}/status`),
+
+  subscribeToProgress: (scanId, onProgress) => {
+    const socketUrl = new URL(API_BASE_URL, window.location.href);
+    socketUrl.protocol = socketUrl.protocol === 'https:' ? 'wss:' : 'ws:';
+    socketUrl.pathname = `/api/v1/ws/scans/${encodeURIComponent(scanId)}`;
+    socketUrl.search = '';
+    const socket = new WebSocket(socketUrl);
+    socket.addEventListener('message', (message) => {
+      try {
+        onProgress(JSON.parse(message.data));
+      } catch (error) {
+        console.warn('Ignoring malformed scan progress event.', error);
+      }
+    });
+    return () => socket.close();
+  },
 };
 
 export const findingsAPI = {
@@ -182,8 +194,11 @@ export const analyzerAPI = {
       responseType: 'blob',
     }),
 
-  webhookHealth: () =>
-    webhookClient.get('/healthz'),
+};
+
+export const webhookAPI = {
+  health: () =>
+    apiClient.get('/v1/webhooks/health'),
 };
 
 export const scanMetricsAPI = {
@@ -230,5 +245,25 @@ export const adminAPI = {
   markMLOpsFeedbackBatchTrained: (feedbackIds) =>
     apiClient.post('/admin/mlops/feedback/trained/batch', { feedbackIds }),
 };
+export const remediationAPI = {
+  preview: (findingId) =>
+    apiClient.post(`/v1/findings/${findingId}/remediation/preview`),
 
+  generate: (findingId) =>
+    apiClient.post(`/v1/findings/${findingId}/remediation/generate`),
+
+  getPatch: (id) =>
+    apiClient.get(`/v1/remediations/${id}/patch`, {
+      responseType: 'text',
+    }),
+
+  approve: (id) =>
+    apiClient.post(`/v1/remediations/${id}/approve`),
+
+  reject: (id) =>
+    apiClient.post(`/v1/remediations/${id}/reject`),
+
+  createPR: (id) =>
+    apiClient.post(`/v1/remediations/${id}/create-pr`),
+};
 export default apiClient;
