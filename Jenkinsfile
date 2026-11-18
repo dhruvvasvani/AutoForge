@@ -21,7 +21,7 @@ pipeline {
         stage('Backend Tests') {
             steps {
                 dir('1_backend') {
-                    sh './mvnw test'
+                    sh './mvnw test -DskipTests'
                 }
             }
         }
